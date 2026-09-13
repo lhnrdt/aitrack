@@ -188,6 +188,11 @@ void ImGuiView::set_startup_complete()
 	startup_active.store(false, std::memory_order_release);
 }
 
+void ImGuiView::set_startup_progress(float progress)
+{
+	startup_progress.store(progress < 0.0f ? 0.0f : (progress > 1.0f ? 1.0f : progress), std::memory_order_relaxed);
+}
+
 void ImGuiView::show_tracking_data(ConfigData conf)
 {
 	if (!isUiThread())
@@ -653,8 +658,7 @@ void ImGuiView::renderMainWindow()
 		ImGui::TextUnformatted("Starting AITrack...");
 		ImGui::TextWrapped("Detecting cameras and loading the tracker.");
 		ImGui::Spacing();
-		const float startup_progress = 0.5f + 0.5f * std::sin(static_cast<float>(ImGui::GetTime()) * 3.0f);
-		ImGui::ProgressBar(startup_progress, ImVec2(-1, 18), "Initializing");
+		ImGui::ProgressBar(startup_progress.load(std::memory_order_relaxed), ImVec2(-1, 18), "Initializing");
 		ImGui::End();
 		return;
 	}
@@ -1252,6 +1256,7 @@ void ImGuiView::processPendingUiRequests()
 		const ConfigData value = pending_view_state;
 		has_pending_view_state = false;
 		state = value;
+		applied_state = value;
 		syncBuffersFromState();
 		registerTrackingShortcut(state.tracking_shortcut_enabled);
 		applyCurrentTheme();

@@ -28,9 +28,11 @@ Presenter::Presenter(IView& view, std::unique_ptr<TrackerFactory>&& t_factory, s
 
 	this->paint = state.show_video_feed;
 	this->filter = nullptr;
+	view.set_startup_progress(0.1f);
 	
 	// Init available model names to show in the GUI
 	this->tracker_factory->get_model_names(state.model_names);
+	view.set_startup_progress(0.2f);
 
 	CameraFactory camfactory;
 	CameraSettings camera_settings = build_camera_params();
@@ -38,6 +40,7 @@ Presenter::Presenter(IView& view, std::unique_ptr<TrackerFactory>&& t_factory, s
 	try
 	{
 		all_cameras = camfactory.getCameras(camera_settings);
+		view.set_startup_progress(0.45f);
 	}
 	catch (const std::exception& ex)
 	{
@@ -72,9 +75,11 @@ Presenter::Presenter(IView& view, std::unique_ptr<TrackerFactory>&& t_factory, s
 		std::string ip_str = state.ip;
 		int port = state.port;
 		init_sender(ip_str, port);
+		view.set_startup_progress(0.55f);
 
 		// Build tracker
 		init_tracker(state.selected_model);
+		view.set_startup_progress(0.75f);
 
 		// Setup a filter to stabilize the recognized facial landmarks if needed.
 		update_stabilizer(state);
@@ -82,6 +87,7 @@ Presenter::Presenter(IView& view, std::unique_ptr<TrackerFactory>&& t_factory, s
 		// Sync camera prefs between active camera and state.
 		update_camera_params();
 		update_available_video_modes();
+		view.set_startup_progress(0.9f);
 
 	}
 
@@ -100,6 +106,7 @@ Presenter::Presenter(IView& view, std::unique_ptr<TrackerFactory>&& t_factory, s
 	}
 
 	sync_ui_inputs();
+	view.set_startup_progress(1.0f);
 }
 
 void Presenter::init_sender(std::string &ip, int port)

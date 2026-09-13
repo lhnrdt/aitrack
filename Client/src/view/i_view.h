@@ -25,6 +25,7 @@ public:
 	* Registers a presenter as an observer of this view
 	*/
 	virtual void connect_presenter(IPresenter* presenter) = 0;
+	virtual void set_startup_progress(float progress) = 0;
 
 	/**
 	* Show the tracking data on the UI

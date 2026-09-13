@@ -31,6 +31,7 @@ public:
 
 	void connect_presenter(IPresenter* presenter) override;
 	void set_startup_complete();
+	void set_startup_progress(float progress) override;
 	void show_tracking_data(ConfigData conf) override;
 	void set_tracking_mode(bool is_tracking) override;
 	ConfigData get_inputs() override;
@@ -106,6 +107,7 @@ private:
 	HWND calibration_hwnd = nullptr;
 	bool running = true;
 	std::atomic<bool> startup_active{ true };
+	std::atomic<float> startup_progress{ 0.0f };
 	bool enabled = true;
 	bool tracking = false;
 	bool config_visible = false;
