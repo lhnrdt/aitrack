@@ -62,6 +62,7 @@ private:
 	void releaseCalibrationTexture();
 	void resizeHostWindowForMainContent(bool force = false);
 	void renderMainWindow();
+	void renderFrame();
 	void renderConfigWindow();
 	void renderConfigContent();
 	void renderCalibrationWindow();

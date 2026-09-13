@@ -17,6 +17,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg
 namespace
 {
 	constexpr UINT TRACKING_HOTKEY_ID = 1;
+	constexpr UINT RENDER_TIMER_ID = 2;
 	constexpr float MAIN_WINDOW_WIDTH = 420.0f;
 	constexpr float MAIN_WINDOW_HEIGHT_WITH_PREVIEW = 459.0f;
 	constexpr float MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS = 86.0f;
@@ -134,8 +135,6 @@ int ImGuiView::run()
 	while (running)
 	{
 		ui_thread_id = GetCurrentThreadId();
-		processPendingUiRequests();
-		joinCompletedOperationThreads();
 		while (PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
 		{
 			TranslateMessage(&msg);
@@ -146,28 +145,36 @@ int ImGuiView::run()
 		if (!running)
 			break;
 
-		ImGui::SetCurrentContext(main_context);
-		uploadPendingFrame();
-
-		ImGui_ImplDX11_NewFrame();
-		ImGui_ImplWin32_NewFrame();
-		ImGui::NewFrame();
-
-		renderMainWindow();
-
-		ImGui::Render();
-		const float clear_color[4] = { 0.94f, 0.94f, 0.94f, 1.0f };
-		d3d_context->OMSetRenderTargets(1, render_target_view.GetAddressOf(), nullptr);
-		d3d_context->ClearRenderTargetView(render_target_view.Get(), clear_color);
-		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-		swap_chain->Present(1, 0);
-		renderConfigWindow();
-		renderCalibrationWindow();
+		renderFrame();
 	}
 
 	if (presenter)
 		presenter->close_program();
 	return 0;
+}
+
+void ImGuiView::renderFrame()
+{
+	processPendingUiRequests();
+	joinCompletedOperationThreads();
+
+	ImGui::SetCurrentContext(main_context);
+	uploadPendingFrame();
+
+	ImGui_ImplDX11_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	renderMainWindow();
+
+	ImGui::Render();
+	const float clear_color[4] = { 0.94f, 0.94f, 0.94f, 1.0f };
+	d3d_context->OMSetRenderTargets(1, render_target_view.GetAddressOf(), nullptr);
+	d3d_context->ClearRenderTargetView(render_target_view.Get(), clear_color);
+	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+	swap_chain->Present(1, 0);
+	renderConfigWindow();
+	renderCalibrationWindow();
 }
 
 void ImGuiView::connect_presenter(IPresenter* presenter)
@@ -593,6 +600,9 @@ void ImGuiView::releaseVideoTexture()
 	video_texture.Reset();
 	texture_width = 0;
 	texture_height = 0;
+	std::lock_guard<std::mutex> lock(frame_mutex);
+	pending_frame.release();
+	frame_dirty = false;
 }
 
 void ImGuiView::releaseCalibrationTexture()
@@ -1293,6 +1303,20 @@ LRESULT WINAPI ImGuiView::wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 			view->createRenderTarget();
 		}
 		return 0;
+	case WM_ENTERSIZEMOVE:
+		if (view)
+			SetTimer(hwnd, RENDER_TIMER_ID, 16, nullptr);
+		return 0;
+	case WM_EXITSIZEMOVE:
+		KillTimer(hwnd, RENDER_TIMER_ID);
+		return 0;
+	case WM_TIMER:
+		if (view && wparam == RENDER_TIMER_ID)
+		{
+			view->renderFrame();
+			return 0;
+		}
+		break;
 	case WM_HOTKEY:
 		if (view && wparam == TRACKING_HOTKEY_ID && view->presenter)
 			view->presenter->toggle_tracking();
