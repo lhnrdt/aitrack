@@ -67,9 +67,12 @@ void OCVCamera::start_camera()
 	// Force its properties each time we start the camera
 	// because if we force them with the device switched off
 	// bugs will occur (tiling, for example).
-	cap.set(cv::CAP_PROP_FRAME_WIDTH, this->width);
-	cap.set(cv::CAP_PROP_FRAME_HEIGHT, this->height);
-	cap.set(cv::CAP_PROP_FPS, this->fps);
+	if (cap.get(cv::CAP_PROP_FRAME_WIDTH) != this->width)
+		cap.set(cv::CAP_PROP_FRAME_WIDTH, this->width);
+	if (cap.get(cv::CAP_PROP_FRAME_HEIGHT) != this->height)
+		cap.set(cv::CAP_PROP_FRAME_HEIGHT, this->height);
+	if (cap.get(cv::CAP_PROP_FPS) != this->fps)
+		cap.set(cv::CAP_PROP_FPS, this->fps);
 }
 
 void OCVCamera::stop_camera()
