@@ -355,7 +355,20 @@ void OCVCamera::get_frame(uint8_t* buffer)
 	else if (frame.channels() == 1)
 		cv::cvtColor(frame, frame, cv::COLOR_GRAY2BGR);
 	if (frame.cols != width || frame.rows != height)
-		cv::resize(frame, frame, cv::Size(width, height), 0.0, 0.0, cv::INTER_LINEAR);
+	{
+		const double width_scale = static_cast<double>(width) / frame.cols;
+		const double height_scale = static_cast<double>(height) / frame.rows;
+		const double scale = width_scale < height_scale ? width_scale : height_scale;
+		const int scaled_width = static_cast<int>(frame.cols * scale + 0.5);
+		const int scaled_height = static_cast<int>(frame.rows * scale + 0.5);
+		cv::Mat resized;
+		cv::resize(frame, resized, cv::Size(scaled_width, scaled_height), 0.0, 0.0, cv::INTER_LINEAR);
+		cv::Mat letterboxed(height, width, CV_8UC3, cv::Scalar(0, 0, 0));
+		const int offset_x = (width - scaled_width) / 2;
+		const int offset_y = (height - scaled_height) / 2;
+		resized.copyTo(letterboxed(cv::Rect(offset_x, offset_y, scaled_width, scaled_height)));
+		frame = letterboxed;
+	}
 
 	for (int row = 0; row < height; ++row)
 		std::memcpy(buffer + static_cast<size_t>(row) * width * 3,
