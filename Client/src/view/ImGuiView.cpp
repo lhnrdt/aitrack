@@ -673,7 +673,8 @@ void ImGuiView::renderMainWindow()
 		MAIN_WINDOW_HEIGHT_COMPACT + (state.show_diagnostics ? MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS : 0.0f);
 	ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);
 	ImGui::SetNextWindowSize(ImVec2(MAIN_WINDOW_WIDTH, main_window_height), ImGuiCond_Always);
-	ImGui::Begin("AITrack " AITRACK_VERSION, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
+	ImGui::Begin("AITrack " AITRACK_VERSION, nullptr,
+		ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
 
 	if (state.show_video_feed)
 	{
