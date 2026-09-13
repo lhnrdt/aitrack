@@ -66,3 +66,8 @@ std::vector<int> Ps3Camera::get_available_fps()
 {
 	return { 30, 60 };
 }
+
+std::string Ps3Camera::get_name() const
+{
+	return "PS3 Eye";
+}

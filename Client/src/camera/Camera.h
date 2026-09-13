@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <vector>
 #include "CameraSettings.h"
 
@@ -16,6 +17,7 @@ public:
 	virtual void set_settings(CameraSettings& settings) = 0;
 	virtual CameraSettings get_settings() = 0;
 	virtual std::vector<int> get_available_fps() { return {}; }
+	virtual std::string get_name() const { return "Camera"; }
 
 	Camera(int width, int height, int fps) {
 		this->width = width;

@@ -102,6 +102,7 @@ private:
 	*/
 	void update_camera_params();
 	void update_available_fps();
+	void update_camera_names();
 
 	/**
 	* Paints the model predictions on an captured image using the FaceData.

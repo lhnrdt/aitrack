@@ -131,3 +131,8 @@ std::vector<int> OCVCamera::get_available_fps()
 	probe.release();
 	return available;
 }
+
+std::string OCVCamera::get_name() const
+{
+	return "Camera " + std::to_string(cam_index) + " (OpenCV)";
+}

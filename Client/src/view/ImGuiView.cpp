@@ -764,11 +764,16 @@ void ImGuiView::renderConfigContent()
 
 	ImGui::BeginChild("Camera", ImVec2(191, 331), true, fixed_panel_flags);
 	ImGui::TextUnformatted("Camera");
-	if (ImGui::BeginCombo("##camera", (std::string("Camera ") + std::to_string(state.selected_camera)).c_str()))
+	const std::string current_camera = state.selected_camera >= 0 &&
+		state.selected_camera < static_cast<int>(state.available_camera_names.size()) ?
+		state.available_camera_names[state.selected_camera] :
+		(std::string("Camera ") + std::to_string(state.selected_camera));
+	if (ImGui::BeginCombo("##camera", current_camera.c_str()))
 	{
 		for (int i = 0; i < state.num_cameras_detected; ++i)
 		{
-			std::string label = "Camera " + std::to_string(i);
+			const std::string label = i < static_cast<int>(state.available_camera_names.size()) ?
+				state.available_camera_names[i] : (std::string("Camera ") + std::to_string(i));
 			if (ImGui::Selectable(label.c_str(), state.selected_camera == i))
 			{
 				state.selected_camera = i;

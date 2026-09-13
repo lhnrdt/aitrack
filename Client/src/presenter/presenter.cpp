@@ -58,6 +58,7 @@ Presenter::Presenter(IView& view, std::unique_ptr<TrackerFactory>&& t_factory, s
 	{
 		//Change the number of available cameras
 		state.num_cameras_detected = (int)all_cameras.size();
+		update_camera_names();
 
 		//Reset selected camera if saved camera is out of detected cameras' bounds
 		if (state.selected_camera >= state.num_cameras_detected) {
@@ -365,6 +366,13 @@ void Presenter::update_available_fps()
 		state.available_fps.push_back(state.video_fps);
 	std::sort(state.available_fps.begin(), state.available_fps.end());
 	state.available_fps.erase(std::unique(state.available_fps.begin(), state.available_fps.end()), state.available_fps.end());
+}
+
+void Presenter::update_camera_names()
+{
+	state.available_camera_names.clear();
+	for (const auto& camera : all_cameras)
+		state.available_camera_names.push_back(camera->get_name());
 }
 
 void Presenter::send_data(double* buffer_data)
