@@ -784,16 +784,16 @@ void ImGuiView::renderConfigContent()
 	}
 	inputIntRow("Width", &state.video_width);
 	inputIntRow("Height", &state.video_height);
-	if (state.available_fps.empty())
-		inputIntRow("FPS", &state.video_fps);
-	else
 	{
+		std::vector<int> fps_options = state.available_fps;
+		if (fps_options.empty())
+			fps_options.push_back(state.video_fps);
 		ImGui::TextUnformatted("FPS");
 		ImGui::SameLine(76.0f);
 		const std::string current_fps = std::to_string(state.video_fps);
 		if (ImGui::BeginCombo("##fps", current_fps.c_str()))
 		{
-			for (const int fps : state.available_fps)
+			for (const int fps : fps_options)
 			{
 				const std::string label = std::to_string(fps);
 				if (ImGui::Selectable(label.c_str(), state.video_fps == fps))
