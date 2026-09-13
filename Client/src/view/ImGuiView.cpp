@@ -353,7 +353,7 @@ bool ImGuiView::createConfigWindow()
 		WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
 		main_rect.right + 12, main_rect.top,
 		window_rect.right - window_rect.left, window_rect.bottom - window_rect.top,
-		hwnd, nullptr, GetModuleHandle(nullptr), this);
+		nullptr, nullptr, GetModuleHandle(nullptr), this);
 	if (!config_hwnd)
 		return false;
 
@@ -888,6 +888,16 @@ LRESULT WINAPI ImGuiView::configWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPAR
 		SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
 	}
 
+	if (msg == WM_CLOSE || (msg == WM_SYSCOMMAND && (wparam & 0xfff0) == SC_CLOSE))
+	{
+		if (view)
+		{
+			view->config_visible = false;
+			ShowWindow(hwnd, SW_HIDE);
+		}
+		return 0;
+	}
+
 	if (view && view->config_context)
 	{
 		ImGuiContext* previous_context = ImGui::GetCurrentContext();
@@ -906,13 +916,6 @@ LRESULT WINAPI ImGuiView::configWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPAR
 			view->config_render_target_view.Reset();
 			view->config_swap_chain->ResizeBuffers(0, LOWORD(lparam), HIWORD(lparam), DXGI_FORMAT_UNKNOWN, 0);
 			view->createRenderTarget(view->config_swap_chain.Get(), view->config_render_target_view);
-		}
-		return 0;
-	case WM_CLOSE:
-		if (view)
-		{
-			view->config_visible = false;
-			ShowWindow(hwnd, SW_HIDE);
 		}
 		return 0;
 	case WM_DESTROY:
