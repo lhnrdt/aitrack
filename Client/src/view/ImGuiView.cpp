@@ -638,7 +638,8 @@ void ImGuiView::resizeHostWindowForMainContent(bool force)
 	host_show_diagnostics = show_diagnostics;
 	const int client_width = static_cast<int>(MAIN_WINDOW_WIDTH) + MAIN_WINDOW_MARGIN * 2;
 	const int client_height = static_cast<int>(state.show_video_feed ? MAIN_WINDOW_HEIGHT_WITH_PREVIEW +
-		(show_diagnostics ? MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS : 0.0f) : MAIN_WINDOW_HEIGHT_COMPACT) +
+		(show_diagnostics ? MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS : 0.0f) :
+		MAIN_WINDOW_HEIGHT_COMPACT + (show_diagnostics ? MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS : 0.0f)) +
 		MAIN_WINDOW_MARGIN * 2;
 
 	RECT window_rect = { 0, 0, client_width, client_height };
@@ -668,7 +669,8 @@ void ImGuiView::renderMainWindow()
 	if (!tracking)
 		releaseVideoTexture();
 	const float main_window_height = state.show_video_feed ? MAIN_WINDOW_HEIGHT_WITH_PREVIEW +
-		(state.show_diagnostics ? MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS : 0.0f) : MAIN_WINDOW_HEIGHT_COMPACT;
+		(state.show_diagnostics ? MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS : 0.0f) :
+		MAIN_WINDOW_HEIGHT_COMPACT + (state.show_diagnostics ? MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS : 0.0f);
 	ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);
 	ImGui::SetNextWindowSize(ImVec2(MAIN_WINDOW_WIDTH, main_window_height), ImGuiCond_Always);
 	ImGui::Begin("AITrack " AITRACK_VERSION, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
@@ -677,9 +679,9 @@ void ImGuiView::renderMainWindow()
 	{
 		renderVideoPanel(tracking ? video_texture_view.Get() : nullptr,
 		tracking ? "Waiting for camera frame..." : "Tracking stopped", texture_width, texture_height);
-		if (state.show_diagnostics)
-			renderPerformanceChart();
 	}
+	if (state.show_diagnostics)
+		renderPerformanceChart();
 
 	ImGui::BeginDisabled(!enabled || tracking_busy);
 	const char* tracking_label = tracking_busy ? "Working..." :
@@ -1026,8 +1028,12 @@ void ImGuiView::renderPerformanceChart()
 	float total = 0.0f;
 	for (float value : values)
 		total += value;
+	const float frame_budget_ms = state.video_fps > 0 ? 1000.0f / state.video_fps : 0.0f;
+	const float chart_scale = total > frame_budget_ms ? total : frame_budget_ms;
 
-	ImGui::TextUnformatted("Frame phases");
+	char title[64];
+	std::snprintf(title, sizeof(title), "Frame phases (budget %.1f ms)", frame_budget_ms);
+	ImGui::TextUnformatted(title);
 	ImGui::InvisibleButton("framePerformanceChart", ImVec2(-1.0f, 64.0f));
 	const ImVec2 chart_min = ImGui::GetItemRectMin();
 	const ImVec2 chart_max = ImGui::GetItemRectMax();
@@ -1036,12 +1042,12 @@ void ImGuiView::renderPerformanceChart()
 	const float bar_bottom = bar_top + 22.0f;
 	draw_list->AddRectFilled(ImVec2(chart_min.x, bar_top), ImVec2(chart_max.x, bar_bottom), IM_COL32(45, 45, 45, 255), 2.0f);
 
-	if (total > 0.0f)
+	if (chart_scale > 0.0f)
 	{
 		float segment_start = chart_min.x;
 		for (int i = 0; i < 5; ++i)
 		{
-			const float segment_width = (chart_max.x - chart_min.x) * values[i] / total;
+			const float segment_width = (chart_max.x - chart_min.x) * values[i] / chart_scale;
 			if (segment_width > 0.0f)
 			{
 				draw_list->AddRectFilled(ImVec2(segment_start, bar_top),
@@ -1049,6 +1055,9 @@ void ImGuiView::renderPerformanceChart()
 				segment_start += segment_width;
 			}
 		}
+		const float budget_x = chart_min.x + (chart_max.x - chart_min.x) * frame_budget_ms / chart_scale;
+		draw_list->AddLine(ImVec2(budget_x, bar_top - 3.0f), ImVec2(budget_x, bar_bottom + 3.0f),
+			ImGui::GetColorU32(ImGuiCol_Text), 2.0f);
 	}
 
 	for (int i = 0; i < 5; ++i)
