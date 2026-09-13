@@ -20,7 +20,7 @@ namespace
 	constexpr UINT RENDER_TIMER_ID = 2;
 	constexpr float MAIN_WINDOW_WIDTH = 420.0f;
 	constexpr float MAIN_WINDOW_HEIGHT_WITH_PREVIEW = 459.0f;
-	constexpr float MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS = 86.0f;
+	constexpr float MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS = 104.0f;
 	constexpr float MAIN_WINDOW_HEIGHT_COMPACT = 198.0f;
 	constexpr int MAIN_WINDOW_MARGIN = 8;
 

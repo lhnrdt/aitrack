@@ -316,7 +316,13 @@ bool OCVCamera::is_camera_available()
 void OCVCamera::start_camera()
 {
 	const bool exact_mode_applied = setDirectShowCameraMode(cam_index, width, height, fps);
-	cap.open(cam_index, CV_BACKEND);
+	const std::vector<int> open_params = {
+		cv::CAP_PROP_FRAME_WIDTH, width,
+		cv::CAP_PROP_FRAME_HEIGHT, height,
+		cv::CAP_PROP_FPS, fps
+	};
+	if (!cap.open(cam_index, CV_BACKEND, open_params))
+		cap.open(cam_index, CV_BACKEND);
 	if (!cap.isOpened())
 	{
 		throw std::runtime_error("No compatible camera found.");
