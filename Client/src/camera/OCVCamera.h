@@ -12,6 +12,7 @@ private:
 	int cam_native_height, cam_native_width, cam_native_fps;
 	int cam_index;
 	int CV_BACKEND;
+	std::string camera_name;
 
 	bool is_camera_available();
 

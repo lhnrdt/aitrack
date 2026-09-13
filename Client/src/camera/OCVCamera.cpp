@@ -1,7 +1,72 @@
 #include "OCVCamera.h"
 
 #include <cmath>
+#include <dshow.h>
 #include <vector>
+
+#pragma comment(lib, "strmiids.lib")
+
+namespace
+{
+	std::string getDirectShowCameraName(int camera_index)
+	{
+		IMoniker* moniker = nullptr;
+		IEnumMoniker* enumerator = nullptr;
+		ICreateDevEnum* device_enumerator = nullptr;
+		std::string name;
+		const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		const bool initialized_com = SUCCEEDED(com_result);
+
+		if (FAILED(CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER,
+			IID_ICreateDevEnum, reinterpret_cast<void**>(&device_enumerator))))
+		{
+			if (initialized_com)
+				CoUninitialize();
+			return name;
+		}
+		if (FAILED(device_enumerator->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &enumerator, 0)) || !enumerator)
+		{
+			device_enumerator->Release();
+			if (initialized_com)
+				CoUninitialize();
+			return name;
+		}
+
+		int current_index = 0;
+		while (enumerator->Next(1, &moniker, nullptr) == S_OK)
+		{
+			if (current_index++ == camera_index)
+			{
+				IPropertyBag* properties = nullptr;
+				if (SUCCEEDED(moniker->BindToStorage(nullptr, nullptr, IID_IPropertyBag,
+					reinterpret_cast<void**>(&properties))))
+				{
+					VARIANT value;
+					VariantInit(&value);
+					if (SUCCEEDED(properties->Read(L"FriendlyName", &value, nullptr)) && value.vt == VT_BSTR)
+					{
+						int length = WideCharToMultiByte(CP_UTF8, 0, value.bstrVal, -1, nullptr, 0, nullptr, nullptr);
+						std::string utf8(length, '\0');
+						WideCharToMultiByte(CP_UTF8, 0, value.bstrVal, -1, &utf8[0], length, nullptr, nullptr);
+						utf8.pop_back();
+						name = utf8;
+					}
+					VariantClear(&value);
+					properties->Release();
+				}
+				moniker->Release();
+				break;
+			}
+			moniker->Release();
+			moniker = nullptr;
+		}
+		enumerator->Release();
+		device_enumerator->Release();
+		if (initialized_com)
+			CoUninitialize();
+		return name;
+	}
+}
 
 OCVCamera::OCVCamera(int width, int height, int fps, int index) :
 	Camera(width, height, fps),
@@ -28,6 +93,9 @@ OCVCamera::OCVCamera(int width, int height, int fps, int index) :
 	
 	if (fps < 30)
 		this->fps = cam_native_fps;
+	camera_name = getDirectShowCameraName(cam_index);
+	if (camera_name.empty())
+		camera_name = "Camera " + std::to_string(cam_index);
 
 	exposure, gain = -1;
 }
@@ -52,7 +120,8 @@ bool OCVCamera::is_camera_available()
 
 		cam_native_width = (int)cap.get(cv::CAP_PROP_FRAME_WIDTH);
 		cam_native_height = (int)cap.get(cv::CAP_PROP_FRAME_HEIGHT);
-		cam_native_fps = std::max(30, (int)cap.get(cv::CAP_PROP_FPS));
+		const int detected_fps = static_cast<int>(cap.get(cv::CAP_PROP_FPS));
+		cam_native_fps = detected_fps > 30 ? detected_fps : 30;
 		cap.release();
 	}
 	return available;
@@ -119,13 +188,13 @@ std::vector<int> OCVCamera::get_available_fps()
 
 	probe.set(cv::CAP_PROP_FRAME_WIDTH, width);
 	probe.set(cv::CAP_PROP_FRAME_HEIGHT, height);
-	const int candidates[] = { 15, 24, 30, 60, 90, 120 };
+	const int candidates[] = { 15, 24, 30, 60 };
 	for (const int candidate : candidates)
 	{
 		if (!probe.set(cv::CAP_PROP_FPS, candidate))
 			continue;
 		const double actual = probe.get(cv::CAP_PROP_FPS);
-		if (actual <= 0.0 || std::fabs(actual - candidate) <= 1.0)
+		if (actual > 0.0 && std::fabs(actual - candidate) <= 1.0)
 			available.push_back(actual > 0.0 ? static_cast<int>(actual + 0.5) : candidate);
 	}
 	probe.release();
@@ -134,5 +203,5 @@ std::vector<int> OCVCamera::get_available_fps()
 
 std::string OCVCamera::get_name() const
 {
-	return "Camera " + std::to_string(cam_index) + " (OpenCV)";
+	return camera_name;
 }
