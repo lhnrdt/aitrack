@@ -19,7 +19,7 @@ namespace
 	constexpr UINT TRACKING_HOTKEY_ID = 1;
 	constexpr float MAIN_WINDOW_WIDTH = 420.0f;
 	constexpr float MAIN_WINDOW_HEIGHT_WITH_PREVIEW = 459.0f;
-	constexpr float MAIN_WINDOW_HEIGHT_COMPACT = 174.0f;
+	constexpr float MAIN_WINDOW_HEIGHT_COMPACT = 198.0f;
 	constexpr int MAIN_WINDOW_MARGIN = 8;
 
 	std::wstring widen(const char* value)
@@ -285,6 +285,19 @@ IView* ImGuiView::get_calibration_window()
 void ImGuiView::paint_video_frame(cv::Mat& img)
 {
 	std::lock_guard<std::mutex> lock(frame_mutex);
+	const auto now = std::chrono::steady_clock::now();
+	if (has_diagnostic_frame_time)
+	{
+		const float frame_time_ms = std::chrono::duration<float, std::milli>(now - diagnostic_last_frame_time).count();
+		if (frame_time_ms > 0.0f)
+		{
+			diagnostic_frame_time_ms.store(frame_time_ms, std::memory_order_relaxed);
+			diagnostic_fps.store(1000.0f / frame_time_ms, std::memory_order_relaxed);
+		}
+	}
+	diagnostic_last_frame_time = now;
+	has_diagnostic_frame_time = true;
+
 	if (img.channels() == 3)
 	{
 		if (calibration_visible)
@@ -626,6 +639,9 @@ void ImGuiView::renderMainWindow()
 		resizeHostWindowForMainContent();
 		applyPrefs();
 	}
+	ImGui::SameLine();
+	if (ImGui::Checkbox("Enable diagnostics", &state.show_diagnostics))
+		applyPrefs();
 
 	ImGui::BeginDisabled(tracking);
 	if (ImGui::Button("Configuration", ImVec2(-1, 30)))
@@ -851,6 +867,7 @@ void ImGuiView::renderVideoPanel(ID3D11ShaderResourceView* texture, const char* 
 {
 	ImVec2 size(400, 280);
 	ImGui::BeginChild("cameraView", size, false, ImGuiWindowFlags_NoScrollbar);
+	const ImVec2 panel_position = ImGui::GetCursorScreenPos();
 	if (texture)
 		ImGui::Image(reinterpret_cast<ImTextureID>(texture), size);
 	else
@@ -858,6 +875,17 @@ void ImGuiView::renderVideoPanel(ID3D11ShaderResourceView* texture, const char* 
 		ImGui::SetCursorPosY((size.y - ImGui::GetTextLineHeightWithSpacing()) * 0.5f);
 		ImGui::SetCursorPosX(12.0f);
 		ImGui::TextWrapped("%s", empty_text);
+	}
+	if (texture && state.show_diagnostics)
+	{
+		const float fps = diagnostic_fps.load(std::memory_order_relaxed);
+		const float frame_time_ms = diagnostic_frame_time_ms.load(std::memory_order_relaxed);
+		ImDrawList* draw_list = ImGui::GetWindowDrawList();
+		draw_list->AddRectFilled(ImVec2(panel_position.x + 6.0f, panel_position.y + 6.0f),
+			ImVec2(panel_position.x + 132.0f, panel_position.y + 43.0f), IM_COL32(0, 0, 0, 170), 3.0f);
+		char diagnostics[64];
+		std::snprintf(diagnostics, sizeof(diagnostics), "FPS %.1f\nFrame %.1f ms", fps, frame_time_ms);
+		draw_list->AddText(ImVec2(panel_position.x + 12.0f, panel_position.y + 10.0f), IM_COL32(255, 255, 255, 255), diagnostics);
 	}
 	ImGui::EndChild();
 }

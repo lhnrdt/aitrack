@@ -32,6 +32,7 @@ ConfigData ConfigData::getGenericConfig()
 	conf.camera_fov = 56.0;
 	conf.prior_distance = .7;
 	conf.show_video_feed = true;
+	conf.show_diagnostics = false;
 	conf.selected_model = 0;
 	conf.selected_camera = 0;
 	conf.num_cameras_detected = 0;
@@ -135,6 +136,7 @@ void ConfigMgr::updateConfig(const ConfigData& data)
 	values["camera_fov"] = std::to_string(data.camera_fov);
 	values["prior_distance"] = std::to_string(data.prior_distance);
 	values["video_feed"] = boolToString(data.show_video_feed);
+	values["diagnostics"] = boolToString(data.show_diagnostics);
 	values["model"] = std::to_string(data.selected_model);
 	values["video_width"] = std::to_string(data.video_width);
 	values["video_height"] = std::to_string(data.video_height);
@@ -170,6 +172,7 @@ ConfigData ConfigMgr::getConfig()
 	c.camera_fov = getDouble("camera_fov", 56.0);
 	c.prior_distance = getDouble("prior_distance", 0.0);
 	c.show_video_feed = getBool("video_feed", true);
+	c.show_diagnostics = getBool("diagnostics", false);
 	c.use_landmark_stab = getBool("stabilize_landmarks", true);
 	c.selected_model = getInt("model", 0);
 	c.selected_camera = getInt("selected_camera", 0);

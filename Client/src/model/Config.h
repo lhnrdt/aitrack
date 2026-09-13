@@ -18,6 +18,7 @@ struct ConfigData
 	int video_fps;
 	double prior_distance, camera_fov;
 	bool show_video_feed;
+	bool show_diagnostics;
 	bool use_landmark_stab;
 	bool autocheck_updates;
 	bool tracking_shortcut_enabled;

@@ -14,6 +14,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -104,6 +105,8 @@ private:
 	bool calibration_visible = false;
 	bool shortcut_enabled = false;
 	bool host_show_video_feed = false;
+	std::atomic<float> diagnostic_fps{ 0.0f };
+	std::atomic<float> diagnostic_frame_time_ms{ 0.0f };
 	std::atomic<bool> tracking_operation{ false };
 	std::atomic<bool> apply_operation{ false };
 	std::atomic<bool> calibration_operation{ false };
@@ -141,6 +144,8 @@ private:
 	cv::Mat calibration_pending_frame;
 	bool frame_dirty = false;
 	bool calibration_frame_dirty = false;
+	bool has_diagnostic_frame_time = false;
+	std::chrono::steady_clock::time_point diagnostic_last_frame_time;
 	int texture_width = 0;
 	int texture_height = 0;
 	int calibration_texture_width = 0;

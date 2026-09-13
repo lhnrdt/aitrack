@@ -345,6 +345,7 @@ void Presenter::save_prefs(const ConfigData& data)
 	// Disable painting parts from the run loop if needed
 	this->paint = data.show_video_feed;
 	state.show_video_feed = data.show_video_feed;
+	state.show_diagnostics = data.show_diagnostics;
 
 	this->state.prior_distance = data.prior_distance;
 
