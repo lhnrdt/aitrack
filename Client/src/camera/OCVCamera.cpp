@@ -252,6 +252,69 @@ namespace
 		if (initialized_com) CoUninitialize();
 		return applied;
 	}
+
+	void setDirectShowCameraControls(int camera_index, int exposure, int gain)
+	{
+		(void)gain;
+		const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		const bool initialized_com = SUCCEEDED(com_result);
+		ICreateDevEnum* device_enumerator = nullptr;
+		IEnumMoniker* enumerator = nullptr;
+		IMoniker* moniker = nullptr;
+		IBaseFilter* filter = nullptr;
+		IAMCameraControl* controls = nullptr;
+
+		if (FAILED(CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER,
+			IID_ICreateDevEnum, reinterpret_cast<void**>(&device_enumerator))) ||
+			FAILED(device_enumerator->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &enumerator, 0)) ||
+			!enumerator)
+			goto cleanup;
+
+		for (int current_index = 0; current_index <= camera_index; ++current_index)
+		{
+			if (enumerator->Next(1, &moniker, nullptr) != S_OK)
+				goto cleanup;
+			if (current_index == camera_index)
+				break;
+			moniker->Release();
+			moniker = nullptr;
+		}
+
+		if (FAILED(moniker->BindToObject(nullptr, nullptr, IID_IBaseFilter, reinterpret_cast<void**>(&filter))) ||
+			FAILED(filter->QueryInterface(IID_IAMCameraControl, reinterpret_cast<void**>(&controls))))
+			goto cleanup;
+
+		const long property = CameraControl_Exposure;
+		{
+			LONG minimum = 0;
+			LONG maximum = 0;
+			LONG step = 0;
+			LONG default_value = 0;
+			LONG capabilities = 0;
+			if (SUCCEEDED(controls->GetRange(property, &minimum, &maximum, &step, &default_value, &capabilities)))
+			{
+				const int requested = exposure;
+				if (requested < 0)
+					controls->Set(property, default_value, CameraControl_Flags_Auto);
+				else
+				{
+					const int ui_maximum = 254;
+					const LONG value = minimum + static_cast<LONG>((maximum - minimum) *
+						(static_cast<double>(requested) / ui_maximum));
+					controls->Set(property, value, CameraControl_Flags_Manual);
+				}
+
+			}
+		}
+
+	cleanup:
+		if (controls) controls->Release();
+		if (filter) filter->Release();
+		if (moniker) moniker->Release();
+		if (enumerator) enumerator->Release();
+		if (device_enumerator) device_enumerator->Release();
+		if (initialized_com) CoUninitialize();
+	}
 }
 
 OCVCamera::OCVCamera(int width, int height, int fps, int index) :
@@ -316,6 +379,7 @@ bool OCVCamera::is_camera_available()
 void OCVCamera::start_camera()
 {
 	const bool exact_mode_applied = setDirectShowCameraMode(cam_index, width, height, fps);
+	setDirectShowCameraControls(cam_index, exposure, gain);
 	const std::vector<int> open_params = {
 		cv::CAP_PROP_FRAME_WIDTH, width,
 		cv::CAP_PROP_FRAME_HEIGHT, height,
@@ -387,12 +451,10 @@ void OCVCamera::set_settings(CameraSettings& settings)
 	this->width = settings.width > 0 ? settings.width : this->cam_native_width;
 	this->height = settings.height > 0 ? settings.height : this->cam_native_height;
 	this->fps = settings.fps > 0 ? settings.fps : this->cam_native_fps;
+	exposure = settings.exposure;
+	gain = settings.gain;
+	setDirectShowCameraControls(cam_index, exposure, gain);
 
-	// Disabled for the moment because of the different ranges in generic cameras.
-	//exposure = settings.exposure < 0 ? -1.0F : (float)settings.exposure/255;
-	//gain = settings.gain < 0 ? -1.0F : (float)settings.gain / 64;
-	//cap.set(cv::CAP_PROP_EXPOSURE, exposure);
-	//cap.set(cv::CAP_PROP_GAIN, gain);
 }
 
 CameraSettings OCVCamera::get_settings()
