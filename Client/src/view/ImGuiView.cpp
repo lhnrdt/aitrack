@@ -183,6 +183,11 @@ void ImGuiView::connect_presenter(IPresenter* presenter)
 	this->presenter = presenter;
 }
 
+void ImGuiView::set_startup_complete()
+{
+	startup_active.store(false, std::memory_order_release);
+}
+
 void ImGuiView::show_tracking_data(ConfigData conf)
 {
 	if (!isUiThread())
@@ -226,6 +231,7 @@ void ImGuiView::update_view_state(ConfigData conf)
 		return;
 	}
 	state = conf;
+	applied_state = conf;
 	syncBuffersFromState();
 	registerTrackingShortcut(state.tracking_shortcut_enabled);
 	applyCurrentTheme();
@@ -638,6 +644,21 @@ void ImGuiView::resizeHostWindowForMainContent(bool force)
 
 void ImGuiView::renderMainWindow()
 {
+	if (startup_active.load(std::memory_order_acquire))
+	{
+		ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(MAIN_WINDOW_WIDTH, 150.0f), ImGuiCond_Always);
+		ImGui::Begin("AITrack " AITRACK_VERSION, nullptr,
+			ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
+		ImGui::TextUnformatted("Starting AITrack...");
+		ImGui::TextWrapped("Detecting cameras and loading the tracker.");
+		ImGui::Spacing();
+		const float startup_progress = 0.5f + 0.5f * std::sin(static_cast<float>(ImGui::GetTime()) * 3.0f);
+		ImGui::ProgressBar(startup_progress, ImVec2(-1, 18), "Initializing");
+		ImGui::End();
+		return;
+	}
+
 	const bool tracking_busy = tracking_operation.load();
 	const bool waiting_for_camera_frame = tracking && state.show_video_feed && !video_texture_view;
 	if (!tracking)
@@ -873,7 +894,10 @@ void ImGuiView::renderConfigContent()
 	ImGui::EndChild();
 	ImGui::EndGroup();
 
-	if (ImGui::Button(apply_busy ? "Applying..." : "Apply", ImVec2(-1, 31)) && !apply_busy)
+	const bool unapplied_settings = hasUnappliedSettings();
+	if (unapplied_settings)
+		ImGui::TextColored(ImVec4(0.85f, 0.55f, 0.1f, 1.0f), "Unapplied settings");
+	if (ImGui::Button(apply_busy ? "Applying..." : (unapplied_settings ? "Apply *" : "Apply"), ImVec2(-1, 31)) && !apply_busy)
 		applyPrefs();
 	if (apply_busy)
 		renderSpinner("Applying settings");
@@ -1265,6 +1289,19 @@ void ImGuiView::applyPrefs()
 		return;
 	syncStateFromBuffers();
 	startApplyOperation();
+}
+
+bool ImGuiView::hasUnappliedSettings() const
+{
+	return state.ip != applied_state.ip || state.port != applied_state.port ||
+		state.video_width != applied_state.video_width || state.video_height != applied_state.video_height ||
+		state.video_fps != applied_state.video_fps || state.selected_camera != applied_state.selected_camera ||
+		state.selected_model != applied_state.selected_model || state.prior_distance != applied_state.prior_distance ||
+		state.camera_fov != applied_state.camera_fov || state.show_video_feed != applied_state.show_video_feed ||
+		state.show_diagnostics != applied_state.show_diagnostics || state.face_auto_exposure != applied_state.face_auto_exposure ||
+		state.cam_exposure != applied_state.cam_exposure || state.cam_gain != applied_state.cam_gain ||
+		state.use_landmark_stab != applied_state.use_landmark_stab || state.autocheck_updates != applied_state.autocheck_updates ||
+		state.tracking_shortcut_enabled != applied_state.tracking_shortcut_enabled || state.dark_mode != applied_state.dark_mode;
 }
 
 void ImGuiView::applyCurrentTheme()

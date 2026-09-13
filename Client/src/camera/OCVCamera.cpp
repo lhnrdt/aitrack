@@ -196,7 +196,7 @@ OCVCamera::OCVCamera(int width, int height, int fps, int index) :
 		this->height = cam_native_height;
 	}
 	
-	if (fps < 30)
+	if (fps <= 0)
 		this->fps = cam_native_fps;
 	camera_name = getDirectShowCameraName(cam_index);
 	if (camera_name.empty())
@@ -270,7 +270,7 @@ void OCVCamera::set_settings(CameraSettings& settings)
 {
 	this->width = settings.width > 0 ? settings.width : this->cam_native_width;
 	this->height = settings.height > 0 ? settings.height : this->cam_native_height;
-	this->fps = settings.fps >= 30 ? settings.fps : this->cam_native_fps;
+	this->fps = settings.fps > 0 ? settings.fps : this->cam_native_fps;
 
 	// Disabled for the moment because of the different ranges in generic cameras.
 	//exposure = settings.exposure < 0 ? -1.0F : (float)settings.exposure/255;

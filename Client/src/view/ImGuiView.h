@@ -30,6 +30,7 @@ public:
 	int run();
 
 	void connect_presenter(IPresenter* presenter) override;
+	void set_startup_complete();
 	void show_tracking_data(ConfigData conf) override;
 	void set_tracking_mode(bool is_tracking) override;
 	ConfigData get_inputs() override;
@@ -69,6 +70,7 @@ private:
 	void renderVideoPanel(ID3D11ShaderResourceView* texture, const char* empty_text);
 	void renderPerformanceChart();
 	void updateMouseCursor();
+	bool hasUnappliedSettings() const;
 	void syncBuffersFromState();
 	void syncStateFromBuffers();
 	void applyPrefs();
@@ -103,6 +105,7 @@ private:
 	HWND config_hwnd = nullptr;
 	HWND calibration_hwnd = nullptr;
 	bool running = true;
+	std::atomic<bool> startup_active{ true };
 	bool enabled = true;
 	bool tracking = false;
 	bool config_visible = false;
@@ -122,6 +125,7 @@ private:
 	std::atomic<bool> calibration_operation{ false };
 
 	ConfigData state = ConfigData::getGenericConfig();
+	ConfigData applied_state = ConfigData::getGenericConfig();
 
 	std::thread tracking_operation_thread;
 	std::thread apply_operation_thread;

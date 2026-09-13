@@ -15,6 +15,10 @@
 
 #include "model/UpdateChecker.h"
 
+#include <atomic>
+#include <exception>
+#include <thread>
+
 
 
 int main(int argc, char *argv[])
@@ -52,8 +56,24 @@ int main(int argc, char *argv[])
 
     auto t_factory = std::make_unique<TrackerFactory>("./models/");
 
-    Presenter p((IView&)view, std::move(t_factory), std::move(conf_mgr));
-    logger->info("App initialized");
+    std::unique_ptr<Presenter> presenter;
+    std::exception_ptr startup_error;
+    std::thread startup_thread([&]() {
+        try
+        {
+            presenter = std::make_unique<Presenter>((IView&)view, std::move(t_factory), std::move(conf_mgr));
+        }
+        catch (...)
+        {
+            startup_error = std::current_exception();
+        }
+        view.set_startup_complete();
+    });
 
-    return view.run();
+    const int result = view.run();
+    startup_thread.join();
+    if (startup_error)
+        std::rethrow_exception(startup_error);
+    logger->info("App initialized");
+    return result;
 }
