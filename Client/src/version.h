@@ -1,3 +1,3 @@
 #pragma once
 
-#define AITRACK_VERSION "v0.7.2-alpha"
+#define AITRACK_VERSION "v0.8.0-alpha"
