@@ -346,7 +346,7 @@ bool ImGuiView::createConfigWindow()
 
 	RECT main_rect = {};
 	GetWindowRect(hwnd, &main_rect);
-	RECT window_rect = { 0, 0, 411, 434 };
+	RECT window_rect = { 0, 0, 411, 492 };
 	AdjustWindowRect(&window_rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
 
 	config_hwnd = CreateWindowW(L"AITrackImGuiConfig", L"ConfigWindow",
@@ -628,6 +628,33 @@ void ImGuiView::renderConfigContent()
 {
 	ImGui::BeginDisabled(!enabled || tracking);
 	constexpr ImGuiWindowFlags fixed_panel_flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+
+	auto inputIntRow = [](const char* label, int* value) {
+		ImGui::PushID(label);
+		ImGui::TextUnformatted(label);
+		ImGui::SameLine(76.0f);
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+		ImGui::InputInt("##value", value);
+		ImGui::PopID();
+	};
+	auto inputTextRow = [](const char* label, std::array<char, 32>& buffer, ImGuiInputTextFlags flags = 0) {
+		ImGui::PushID(label);
+		ImGui::TextUnformatted(label);
+		ImGui::SameLine(88.0f);
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+		ImGui::InputText("##value", buffer.data(), buffer.size(), flags);
+		ImGui::PopID();
+	};
+	auto checkboxWrapped = [](const char* label, bool* value) {
+		ImGui::PushID(label);
+		ImGui::Checkbox("##value", value);
+		ImGui::SameLine();
+		ImGui::PushTextWrapPos(ImGui::GetContentRegionMax().x);
+		ImGui::TextUnformatted(label);
+		ImGui::PopTextWrapPos();
+		ImGui::PopID();
+	};
+
 	ImGui::BeginChild("Camera", ImVec2(191, 331), true, fixed_panel_flags);
 	ImGui::TextUnformatted("Camera");
 	if (ImGui::BeginCombo("##camera", (std::string("Camera ") + std::to_string(state.selected_camera)).c_str()))
@@ -640,9 +667,9 @@ void ImGuiView::renderConfigContent()
 		}
 		ImGui::EndCombo();
 	}
-	ImGui::InputInt("Width", &state.video_width);
-	ImGui::InputInt("Height", &state.video_height);
-	ImGui::InputInt("FPS", &state.video_fps);
+	inputIntRow("Width", &state.video_width);
+	inputIntRow("Height", &state.video_height);
+	inputIntRow("FPS", &state.video_fps);
 	ImGui::Separator();
 	bool custom_brightness = state.cam_gain > 0 && state.cam_exposure > 0;
 	if (ImGui::Checkbox("Custom brightness", &custom_brightness))
@@ -659,18 +686,31 @@ void ImGuiView::renderConfigContent()
 
 	ImGui::SameLine();
 	ImGui::BeginGroup();
-	ImGui::BeginChild("Remote", ImVec2(191, 71), true, fixed_panel_flags);
-	ImGui::TextUnformatted("Use remote OpenTrack client");
-	ImGui::InputText("IP", ip_buffer.data(), ip_buffer.size());
-	ImGui::InputText("Port", port_buffer.data(), port_buffer.size(), ImGuiInputTextFlags_CharsDecimal);
+	ImGui::BeginChild("Remote", ImVec2(191, 92), true, fixed_panel_flags);
+	ImGui::TextWrapped("Use remote OpenTrack client");
+	ImGui::PushID("IP");
+	ImGui::TextUnformatted("IP");
+	ImGui::SameLine(54.0f);
+	ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+	ImGui::InputText("##value", ip_buffer.data(), ip_buffer.size());
+	ImGui::PopID();
+	ImGui::PushID("Port");
+	ImGui::TextUnformatted("Port");
+	ImGui::SameLine(54.0f);
+	ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+	ImGui::InputText("##value", port_buffer.data(), port_buffer.size(), ImGuiInputTextFlags_CharsDecimal);
+	ImGui::PopID();
 	ImGui::EndChild();
 
-	ImGui::BeginChild("Tracker parameters", ImVec2(191, 181), true, fixed_panel_flags);
+	ImGui::BeginChild("Tracker parameters", ImVec2(191, 196), true, fixed_panel_flags);
 	ImGui::TextUnformatted("Tracker parameters");
-	ImGui::InputText("Distance (m)", distance_buffer.data(), distance_buffer.size(), ImGuiInputTextFlags_CharsDecimal);
-	ImGui::InputText("Camera FOV", fov_buffer.data(), fov_buffer.size(), ImGuiInputTextFlags_CharsDecimal);
+	inputTextRow("Distance", distance_buffer, ImGuiInputTextFlags_CharsDecimal);
+	inputTextRow("Camera FOV", fov_buffer, ImGuiInputTextFlags_CharsDecimal);
 	const char* current_model = state.model_names.empty() ? "" : state.model_names[state.selected_model].c_str();
-	if (ImGui::BeginCombo("Model type", current_model))
+	ImGui::TextUnformatted("Model type");
+	ImGui::SameLine(88.0f);
+	ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+	if (ImGui::BeginCombo("##modelType", current_model))
 	{
 		for (int i = 0; i < static_cast<int>(state.model_names.size()); ++i)
 		{
@@ -679,15 +719,15 @@ void ImGuiView::renderConfigContent()
 		}
 		ImGui::EndCombo();
 	}
-	ImGui::Checkbox("Landmark stabilization", &state.use_landmark_stab);
+	checkboxWrapped("Landmark stabilization", &state.use_landmark_stab);
 	if (ImGui::Button("Calibrate Face"))
 		calibration_visible = true;
 	ImGui::EndChild();
 
-	ImGui::BeginChild("General", ImVec2(191, 104), true, fixed_panel_flags);
+	ImGui::BeginChild("General", ImVec2(191, 119), true, fixed_panel_flags);
 	ImGui::TextUnformatted("General");
-	ImGui::Checkbox("Autocheck updates", &state.autocheck_updates);
-	ImGui::Checkbox("Start/Stop Tracking shortcut", &state.tracking_shortcut_enabled);
+	checkboxWrapped("Autocheck updates", &state.autocheck_updates);
+	checkboxWrapped("Start/Stop Tracking shortcut", &state.tracking_shortcut_enabled);
 	if (ImGui::Checkbox("Dark mode", &state.dark_mode))
 		applyCurrentTheme();
 	ImGui::EndChild();
