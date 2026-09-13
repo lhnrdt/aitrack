@@ -38,7 +38,8 @@ StandardTracker::StandardTracker(std::unique_ptr<PositionSolver>&& solver, std::
     auto session_options = Ort::SessionOptions();
     session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
     session_options.SetInterOpNumThreads(1);
-    session_options.SetIntraOpNumThreads(1);
+    const int configured_threads = omp_get_max_threads();
+    session_options.SetIntraOpNumThreads(configured_threads > 0 ? configured_threads : 1);
     session_options.SetExecutionMode(ExecutionMode::ORT_PARALLEL);
 
    // Landmark detector
