@@ -892,10 +892,21 @@ void ImGuiView::renderConfigContent()
 		renderSpinner("Preparing calibration");
 	ImGui::EndChild();
 
-	ImGui::BeginChild("General", ImVec2(191, 119), true, fixed_panel_flags);
+	ImGui::BeginChild("General", ImVec2(191, 155), true, fixed_panel_flags);
 	ImGui::TextUnformatted("General");
 	checkboxWrapped("Autocheck updates", &state.autocheck_updates);
 	checkboxWrapped("Start/Stop Tracking shortcut", &state.tracking_shortcut_enabled);
+	checkboxWrapped("Expert mode", &state.expert_mode);
+	if (state.expert_mode)
+	{
+		checkboxWrapped("Custom inference threads", &state.onnx_set_num_threads);
+		if (state.onnx_set_num_threads)
+		{
+			inputIntRow("Threads", &state.onnx_num_threads);
+			if (state.onnx_num_threads < 1)
+				state.onnx_num_threads = 1;
+		}
+	}
 	if (ImGui::Checkbox("Dark mode", &state.dark_mode))
 		applyCurrentTheme();
 	ImGui::EndChild();
@@ -1328,6 +1339,8 @@ bool ImGuiView::hasUnappliedSettings() const
 		state.selected_model != applied_state.selected_model || state.prior_distance != applied_state.prior_distance ||
 		state.camera_fov != applied_state.camera_fov || state.show_video_feed != applied_state.show_video_feed ||
 		state.show_diagnostics != applied_state.show_diagnostics || state.face_auto_exposure != applied_state.face_auto_exposure ||
+		state.expert_mode != applied_state.expert_mode || state.onnx_set_num_threads != applied_state.onnx_set_num_threads ||
+		state.onnx_num_threads != applied_state.onnx_num_threads ||
 		state.cam_exposure != applied_state.cam_exposure || state.cam_gain != applied_state.cam_gain ||
 		state.use_landmark_stab != applied_state.use_landmark_stab || state.autocheck_updates != applied_state.autocheck_updates ||
 		state.tracking_shortcut_enabled != applied_state.tracking_shortcut_enabled || state.dark_mode != applied_state.dark_mode;

@@ -433,6 +433,11 @@ void Presenter::save_prefs(const ConfigData& data)
 	state.cam_gain = data.cam_gain;
 	state.face_auto_exposure = data.face_auto_exposure;
 	face_exposure_scale = 1.0;
+	const bool inference_settings_changed = state.onnx_set_num_threads != data.onnx_set_num_threads ||
+		state.onnx_num_threads != data.onnx_num_threads;
+	state.onnx_set_num_threads = data.onnx_set_num_threads;
+	state.onnx_num_threads = data.onnx_num_threads;
+	state.expert_mode = data.expert_mode;
 	state.camera_fov = data.camera_fov;
 	state.video_fps = data.video_fps;
 	state.video_height = data.video_height;
@@ -449,6 +454,8 @@ void Presenter::save_prefs(const ConfigData& data)
 
 	// Rebuild tracker if needed. This also will take care of updating the
 	// state/distance parameter
+	if (inference_settings_changed)
+		t.reset();
 	init_tracker(data.selected_model);
 
 	conf_mgr->updateConfig(state);
