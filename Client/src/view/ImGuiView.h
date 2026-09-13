@@ -13,8 +13,10 @@
 #include <wrl/client.h>
 
 #include <array>
+#include <atomic>
 #include <mutex>
 #include <string>
+#include <thread>
 
 struct ImGuiContext;
 
@@ -65,6 +67,19 @@ private:
 	void syncBuffersFromState();
 	void syncStateFromBuffers();
 	void applyPrefs();
+	void processPendingUiRequests();
+	void joinCompletedOperationThreads();
+	void stopOperationThreads();
+	void startTrackingOperation();
+	void startApplyOperation();
+	void startCalibrationOperation();
+	void renderSpinner(const char* label);
+	bool isUiThread() const;
+	void queueTrackingMode(bool is_tracking);
+	void queueViewState(ConfigData conf);
+	void queueEnabled(bool enabled);
+	void queueVisible(bool visible);
+	void queueMessage(std::string msg, MSG_SEVERITY severity);
 	void applyCurrentTheme();
 	void applyThemeForCurrentContext();
 	void registerTrackingShortcut(bool enabled);
@@ -74,6 +89,7 @@ private:
 	static LRESULT WINAPI calibrationWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
 	IPresenter* presenter = nullptr;
+	DWORD ui_thread_id = 0;
 	ImGuiContext* main_context = nullptr;
 	ImGuiContext* config_context = nullptr;
 	ImGuiContext* calibration_context = nullptr;
@@ -87,8 +103,32 @@ private:
 	bool calibration_visible = false;
 	bool shortcut_enabled = false;
 	bool host_show_video_feed = false;
+	std::atomic<bool> tracking_operation{ false };
+	std::atomic<bool> apply_operation{ false };
+	std::atomic<bool> calibration_operation{ false };
 
 	ConfigData state = ConfigData::getGenericConfig();
+
+	std::thread tracking_operation_thread;
+	std::thread apply_operation_thread;
+	std::thread calibration_operation_thread;
+
+	std::mutex pending_ui_mutex;
+	bool has_pending_tracking_mode = false;
+	bool pending_tracking_mode = false;
+	bool has_pending_tracking_data = false;
+	ConfigData pending_tracking_data = ConfigData::getGenericConfig();
+	bool has_pending_view_state = false;
+	ConfigData pending_view_state = ConfigData::getGenericConfig();
+	bool has_pending_enabled = false;
+	bool pending_enabled = true;
+	bool has_pending_visible = false;
+	bool pending_visible = true;
+	bool has_pending_shortcuts = false;
+	bool pending_shortcuts = false;
+	bool has_pending_message = false;
+	std::string pending_message;
+	MSG_SEVERITY pending_message_severity = NORMAL;
 
 	std::array<char, 64> ip_buffer{};
 	std::array<char, 16> port_buffer{};

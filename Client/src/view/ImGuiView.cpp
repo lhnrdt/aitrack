@@ -9,6 +9,7 @@
 
 #include <opencv2/imgproc.hpp>
 
+#include <cmath>
 #include <cstdio>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -107,6 +108,7 @@ ImGuiView::ImGuiView()
 
 ImGuiView::~ImGuiView()
 {
+	stopOperationThreads();
 	registerTrackingShortcut(false);
 	destroyConfigWindow();
 	destroyCalibrationWindow();
@@ -130,6 +132,9 @@ int ImGuiView::run()
 	MSG msg;
 	while (running)
 	{
+		ui_thread_id = GetCurrentThreadId();
+		processPendingUiRequests();
+		joinCompletedOperationThreads();
 		while (PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
 		{
 			TranslateMessage(&msg);
@@ -171,6 +176,13 @@ void ImGuiView::connect_presenter(IPresenter* presenter)
 
 void ImGuiView::show_tracking_data(ConfigData conf)
 {
+	if (!isUiThread())
+	{
+		std::lock_guard<std::mutex> lock(pending_ui_mutex);
+		pending_tracking_data = conf;
+		has_pending_tracking_data = true;
+		return;
+	}
 	state.x = conf.x;
 	state.y = conf.y;
 	state.z = conf.z;
@@ -181,6 +193,11 @@ void ImGuiView::show_tracking_data(ConfigData conf)
 
 void ImGuiView::set_tracking_mode(bool is_tracking)
 {
+	if (!isUiThread())
+	{
+		queueTrackingMode(is_tracking);
+		return;
+	}
 	tracking = is_tracking;
 	if (!tracking)
 		releaseVideoTexture();
@@ -194,6 +211,11 @@ ConfigData ImGuiView::get_inputs()
 
 void ImGuiView::update_view_state(ConfigData conf)
 {
+	if (!isUiThread())
+	{
+		queueViewState(conf);
+		return;
+	}
 	state = conf;
 	syncBuffersFromState();
 	registerTrackingShortcut(state.tracking_shortcut_enabled);
@@ -203,11 +225,21 @@ void ImGuiView::update_view_state(ConfigData conf)
 
 void ImGuiView::set_enabled(bool enabled)
 {
+	if (!isUiThread())
+	{
+		queueEnabled(enabled);
+		return;
+	}
 	this->enabled = enabled;
 }
 
 void ImGuiView::set_visible(bool visible)
 {
+	if (!isUiThread())
+	{
+		queueVisible(visible);
+		return;
+	}
 	if (calibration_visible || calibration_hwnd)
 	{
 		calibration_visible = visible;
@@ -224,12 +256,24 @@ void ImGuiView::set_visible(bool visible)
 
 void ImGuiView::show_message(const char* msg, MSG_SEVERITY severity)
 {
+	if (!isUiThread())
+	{
+		queueMessage(msg ? msg : "", severity);
+		return;
+	}
 	MessageBoxA(hwnd, msg, severity == CRITICAL ? "Warning" : "Information",
 		MB_OK | (severity == CRITICAL ? MB_ICONWARNING : MB_ICONINFORMATION));
 }
 
 void ImGuiView::set_shortcuts(bool enabled)
 {
+	if (!isUiThread())
+	{
+		std::lock_guard<std::mutex> lock(pending_ui_mutex);
+		pending_shortcuts = enabled;
+		has_pending_shortcuts = true;
+		return;
+	}
 	registerTrackingShortcut(enabled);
 }
 
@@ -557,6 +601,7 @@ void ImGuiView::resizeHostWindowForMainContent(bool force)
 
 void ImGuiView::renderMainWindow()
 {
+	const bool tracking_busy = tracking_operation.load();
 	ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);
 	ImGui::SetNextWindowSize(ImVec2(MAIN_WINDOW_WIDTH, state.show_video_feed ? MAIN_WINDOW_HEIGHT_WITH_PREVIEW : MAIN_WINDOW_HEIGHT_COMPACT), ImGuiCond_Always);
 	ImGui::Begin("AITrack " AITRACK_VERSION, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
@@ -564,10 +609,12 @@ void ImGuiView::renderMainWindow()
 	if (state.show_video_feed)
 		renderVideoPanel(video_texture_view.Get(), tracking ? "Waiting for camera frame..." : "Tracking stopped");
 
-	ImGui::BeginDisabled(!enabled);
-	if (ImGui::Button(tracking ? "Stop tracking" : "Start tracking", ImVec2(-1, 40)) && presenter)
-		presenter->toggle_tracking();
+	ImGui::BeginDisabled(!enabled || tracking_busy);
+	if (ImGui::Button(tracking_busy ? "Working..." : (tracking ? "Stop tracking" : "Start tracking"), ImVec2(-1, 40)) && presenter)
+		startTrackingOperation();
 	ImGui::EndDisabled();
+	if (tracking_busy)
+		renderSpinner("Changing tracking state");
 
 	if (ImGui::Checkbox("Enable preview", &state.show_video_feed))
 	{
@@ -626,7 +673,9 @@ void ImGuiView::renderConfigWindow()
 
 void ImGuiView::renderConfigContent()
 {
-	ImGui::BeginDisabled(!enabled || tracking);
+	const bool apply_busy = apply_operation.load();
+	const bool calibration_busy = calibration_operation.load();
+	ImGui::BeginDisabled(!enabled || tracking || apply_busy || calibration_busy);
 	constexpr ImGuiWindowFlags fixed_panel_flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
 	auto inputIntRow = [](const char* label, int* value) {
@@ -720,8 +769,10 @@ void ImGuiView::renderConfigContent()
 		ImGui::EndCombo();
 	}
 	checkboxWrapped("Landmark stabilization", &state.use_landmark_stab);
-	if (ImGui::Button("Calibrate Face"))
+	if (ImGui::Button(calibration_busy ? "Calibrating..." : "Calibrate Face") && !calibration_busy)
 		calibration_visible = true;
+	if (calibration_busy)
+		renderSpinner("Preparing calibration");
 	ImGui::EndChild();
 
 	ImGui::BeginChild("General", ImVec2(191, 119), true, fixed_panel_flags);
@@ -733,8 +784,10 @@ void ImGuiView::renderConfigContent()
 	ImGui::EndChild();
 	ImGui::EndGroup();
 
-	if (ImGui::Button("Apply", ImVec2(-1, 31)))
+	if (ImGui::Button(apply_busy ? "Applying..." : "Apply", ImVec2(-1, 31)) && !apply_busy)
 		applyPrefs();
+	if (apply_busy)
+		renderSpinner("Applying settings");
 	ImGui::EndDisabled();
 }
 
@@ -768,11 +821,15 @@ void ImGuiView::renderCalibrationWindow()
 		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
 
 	renderVideoPanel(calibration_texture_view.Get(), "Look directly at the camera, click \"Calibrate\" and wait a few seconds");
-	if (ImGui::Button("Calibrate", ImVec2(-1, 40)) && presenter)
+	const bool calibration_busy = calibration_operation.load();
+	ImGui::BeginDisabled(calibration_busy || !enabled);
+	if (ImGui::Button(calibration_busy ? "Calibrating..." : "Calibrate", ImVec2(-1, 40)) && presenter)
 	{
-		applyPrefs();
-		presenter->calibrate_face(*this);
+		startCalibrationOperation();
 	}
+	ImGui::EndDisabled();
+	if (calibration_busy)
+		renderSpinner("Calibrating face");
 	ImGui::End();
 
 	ImGui::Render();
@@ -800,6 +857,25 @@ void ImGuiView::renderVideoPanel(ID3D11ShaderResourceView* texture, const char* 
 	ImGui::EndChild();
 }
 
+void ImGuiView::renderSpinner(const char* label)
+{
+	const float radius = 7.0f;
+	const ImVec2 center(ImGui::GetCursorScreenPos().x + radius + 2.0f,
+		ImGui::GetCursorScreenPos().y + ImGui::GetTextLineHeight() * 0.5f);
+	const float start = static_cast<float>(ImGui::GetTime()) * 5.0f;
+	ImDrawList* draw_list = ImGui::GetWindowDrawList();
+	for (int i = 0; i < 8; ++i)
+	{
+		const float angle = start + static_cast<float>(i) * 3.14159265f / 4.0f;
+		const float alpha = static_cast<float>(i + 1) / 8.0f;
+		const ImVec2 point(center.x + std::cos(angle) * radius, center.y + std::sin(angle) * radius);
+		draw_list->AddCircleFilled(point, 2.0f, ImGui::GetColorU32(ImGuiCol_Text, alpha));
+	}
+	ImGui::Dummy(ImVec2(radius * 2.0f + 8.0f, ImGui::GetTextLineHeight()));
+	ImGui::SameLine();
+	ImGui::TextUnformatted(label);
+}
+
 void ImGuiView::syncBuffersFromState()
 {
 	setBuffer(ip_buffer, state.ip);
@@ -820,12 +896,196 @@ void ImGuiView::syncStateFromBuffers()
 		state.port = 4242;
 }
 
+void ImGuiView::startTrackingOperation()
+{
+	if (!presenter || tracking_operation.exchange(true))
+		return;
+	tracking_operation_thread = std::thread([this]() {
+		try
+		{
+			presenter->toggle_tracking();
+		}
+		catch (const std::exception& ex)
+		{
+			queueMessage(ex.what(), CRITICAL);
+		}
+		catch (...)
+		{
+			queueMessage("The tracking operation failed.", CRITICAL);
+		}
+		tracking_operation = false;
+	});
+}
+
+void ImGuiView::startApplyOperation()
+{
+	if (!presenter || apply_operation.exchange(true))
+		return;
+	const ConfigData requested_state = state;
+	apply_operation_thread = std::thread([this, requested_state]() {
+		try
+		{
+			presenter->save_prefs(requested_state);
+		}
+		catch (const std::exception& ex)
+		{
+			queueMessage(ex.what(), CRITICAL);
+		}
+		catch (...)
+		{
+			queueMessage("Applying settings failed.", CRITICAL);
+		}
+		apply_operation = false;
+	});
+}
+
+void ImGuiView::startCalibrationOperation()
+{
+	if (!presenter || calibration_operation.exchange(true))
+		return;
+	const ConfigData requested_state = state;
+	calibration_operation_thread = std::thread([this, requested_state]() {
+		try
+		{
+			presenter->save_prefs(requested_state);
+			presenter->calibrate_face(*this);
+		}
+		catch (const std::exception& ex)
+		{
+			queueMessage(ex.what(), CRITICAL);
+		}
+		catch (...)
+		{
+			queueMessage("Face calibration failed.", CRITICAL);
+		}
+		calibration_operation = false;
+	});
+}
+
+void ImGuiView::joinCompletedOperationThreads()
+{
+	if (!tracking_operation.load() && tracking_operation_thread.joinable())
+		tracking_operation_thread.join();
+	if (!apply_operation.load() && apply_operation_thread.joinable())
+		apply_operation_thread.join();
+	if (!calibration_operation.load() && calibration_operation_thread.joinable())
+		calibration_operation_thread.join();
+}
+
+void ImGuiView::stopOperationThreads()
+{
+	if (tracking_operation_thread.joinable())
+		tracking_operation_thread.join();
+	if (apply_operation_thread.joinable())
+		apply_operation_thread.join();
+	if (calibration_operation_thread.joinable())
+		calibration_operation_thread.join();
+}
+
+bool ImGuiView::isUiThread() const
+{
+	return ui_thread_id == 0 || ui_thread_id == GetCurrentThreadId();
+}
+
+void ImGuiView::queueTrackingMode(bool is_tracking)
+{
+	std::lock_guard<std::mutex> lock(pending_ui_mutex);
+	pending_tracking_mode = is_tracking;
+	has_pending_tracking_mode = true;
+}
+
+void ImGuiView::queueViewState(ConfigData conf)
+{
+	std::lock_guard<std::mutex> lock(pending_ui_mutex);
+	pending_view_state = conf;
+	has_pending_view_state = true;
+}
+
+void ImGuiView::queueEnabled(bool value)
+{
+	std::lock_guard<std::mutex> lock(pending_ui_mutex);
+	pending_enabled = value;
+	has_pending_enabled = true;
+}
+
+void ImGuiView::queueVisible(bool value)
+{
+	std::lock_guard<std::mutex> lock(pending_ui_mutex);
+	pending_visible = value;
+	has_pending_visible = true;
+}
+
+void ImGuiView::queueMessage(std::string msg, MSG_SEVERITY severity)
+{
+	std::lock_guard<std::mutex> lock(pending_ui_mutex);
+	pending_message = std::move(msg);
+	pending_message_severity = severity;
+	has_pending_message = true;
+}
+
+void ImGuiView::processPendingUiRequests()
+{
+	if (!isUiThread())
+		return;
+
+	std::lock_guard<std::mutex> lock(pending_ui_mutex);
+	if (has_pending_tracking_data)
+	{
+		state.x = pending_tracking_data.x;
+		state.y = pending_tracking_data.y;
+		state.z = pending_tracking_data.z;
+		state.yaw = pending_tracking_data.yaw;
+		state.pitch = pending_tracking_data.pitch;
+		state.roll = pending_tracking_data.roll;
+		has_pending_tracking_data = false;
+	}
+	if (has_pending_tracking_mode)
+	{
+		set_tracking_mode(pending_tracking_mode);
+		has_pending_tracking_mode = false;
+	}
+	if (has_pending_view_state)
+	{
+		const ConfigData value = pending_view_state;
+		has_pending_view_state = false;
+		state = value;
+		syncBuffersFromState();
+		registerTrackingShortcut(state.tracking_shortcut_enabled);
+		applyCurrentTheme();
+		resizeHostWindowForMainContent(true);
+	}
+	if (has_pending_enabled)
+	{
+		enabled = pending_enabled;
+		has_pending_enabled = false;
+	}
+	if (has_pending_visible)
+	{
+		const bool value = pending_visible;
+		has_pending_visible = false;
+		set_visible(value);
+	}
+	if (has_pending_shortcuts)
+	{
+		registerTrackingShortcut(pending_shortcuts);
+		has_pending_shortcuts = false;
+	}
+	if (has_pending_message)
+	{
+		const std::string msg = pending_message;
+		const MSG_SEVERITY severity = pending_message_severity;
+		has_pending_message = false;
+		MessageBoxA(hwnd, msg.c_str(), severity == CRITICAL ? "Warning" : "Information",
+			MB_OK | (severity == CRITICAL ? MB_ICONWARNING : MB_ICONINFORMATION));
+	}
+}
+
 void ImGuiView::applyPrefs()
 {
 	if (!presenter)
 		return;
 	syncStateFromBuffers();
-	presenter->save_prefs(state);
+	startApplyOperation();
 }
 
 void ImGuiView::applyCurrentTheme()
