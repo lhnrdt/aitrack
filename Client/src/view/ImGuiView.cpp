@@ -640,6 +640,8 @@ void ImGuiView::renderMainWindow()
 {
 	const bool tracking_busy = tracking_operation.load();
 	const bool waiting_for_camera_frame = tracking && state.show_video_feed && !video_texture_view;
+	if (!tracking)
+		releaseVideoTexture();
 	const float main_window_height = state.show_video_feed ? MAIN_WINDOW_HEIGHT_WITH_PREVIEW +
 		(state.show_diagnostics ? MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS : 0.0f) : MAIN_WINDOW_HEIGHT_COMPACT;
 	ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);
