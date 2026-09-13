@@ -166,6 +166,7 @@ void ImGuiView::renderFrame()
 	ImGui::NewFrame();
 
 	renderMainWindow();
+	updateMouseCursor();
 
 	ImGui::Render();
 	const float clear_color[4] = { 0.94f, 0.94f, 0.94f, 1.0f };
@@ -647,7 +648,8 @@ void ImGuiView::renderMainWindow()
 
 	if (state.show_video_feed)
 	{
-		renderVideoPanel(video_texture_view.Get(), tracking ? "Waiting for camera frame..." : "Tracking stopped");
+		renderVideoPanel(tracking ? video_texture_view.Get() : nullptr,
+		tracking ? "Waiting for camera frame..." : "Tracking stopped");
 		if (state.show_diagnostics)
 			renderPerformanceChart();
 	}
@@ -721,6 +723,7 @@ void ImGuiView::renderConfigWindow()
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 	config_swap_chain->Present(1, 0);
 
+	updateMouseCursor();
 	ImGui::SetCurrentContext(previous_context);
 }
 
@@ -892,7 +895,13 @@ void ImGuiView::renderCalibrationWindow()
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 	calibration_swap_chain->Present(1, 0);
 
+	updateMouseCursor();
 	ImGui::SetCurrentContext(previous_context);
+}
+
+void ImGuiView::updateMouseCursor()
+{
+	SetCursor(LoadCursor(nullptr, ImGui::IsAnyItemHovered() ? IDC_HAND : IDC_ARROW));
 }
 
 void ImGuiView::renderVideoPanel(ID3D11ShaderResourceView* texture, const char* empty_text)
@@ -1295,6 +1304,16 @@ LRESULT WINAPI ImGuiView::wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 
 	switch (msg)
 	{
+	case WM_SETCURSOR:
+		if (view && LOWORD(lparam) == HTCLIENT)
+		{
+			ImGuiContext* previous_context = ImGui::GetCurrentContext();
+			ImGui::SetCurrentContext(view->main_context);
+			view->updateMouseCursor();
+			ImGui::SetCurrentContext(previous_context);
+			return TRUE;
+		}
+		break;
 	case WM_SIZE:
 		if (view && view->d3d_device && wparam != SIZE_MINIMIZED)
 		{
@@ -1362,6 +1381,16 @@ LRESULT WINAPI ImGuiView::configWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPAR
 
 	switch (msg)
 	{
+	case WM_SETCURSOR:
+		if (view && LOWORD(lparam) == HTCLIENT)
+		{
+			ImGuiContext* previous_context = ImGui::GetCurrentContext();
+			ImGui::SetCurrentContext(view->config_context);
+			view->updateMouseCursor();
+			ImGui::SetCurrentContext(previous_context);
+			return TRUE;
+		}
+		break;
 	case WM_SIZE:
 		if (view && view->d3d_device && view->config_swap_chain && wparam != SIZE_MINIMIZED)
 		{
@@ -1400,6 +1429,16 @@ LRESULT WINAPI ImGuiView::calibrationWndProc(HWND hwnd, UINT msg, WPARAM wparam,
 
 	switch (msg)
 	{
+	case WM_SETCURSOR:
+		if (view && LOWORD(lparam) == HTCLIENT)
+		{
+			ImGuiContext* previous_context = ImGui::GetCurrentContext();
+			ImGui::SetCurrentContext(view->calibration_context);
+			view->updateMouseCursor();
+			ImGui::SetCurrentContext(previous_context);
+			return TRUE;
+		}
+		break;
 	case WM_SIZE:
 		if (view && view->d3d_device && view->calibration_swap_chain && wparam != SIZE_MINIMIZED)
 		{

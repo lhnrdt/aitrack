@@ -68,6 +68,7 @@ private:
 	void renderCalibrationWindow();
 	void renderVideoPanel(ID3D11ShaderResourceView* texture, const char* empty_text);
 	void renderPerformanceChart();
+	void updateMouseCursor();
 	void syncBuffersFromState();
 	void syncStateFromBuffers();
 	void applyPrefs();
