@@ -21,6 +21,7 @@ struct ConfigData
 	bool use_landmark_stab;
 	bool autocheck_updates;
 	bool tracking_shortcut_enabled;
+	bool dark_mode;
 
 	float x, y, z, yaw, pitch, roll;
 

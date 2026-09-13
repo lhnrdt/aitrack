@@ -358,6 +358,7 @@ void Presenter::save_prefs(const ConfigData& data)
 	state.video_width = data.video_width;
 	state.autocheck_updates = data.autocheck_updates;
 	state.tracking_shortcut_enabled = data.tracking_shortcut_enabled;
+	state.dark_mode = data.dark_mode;
 
 	update_camera_params();
 

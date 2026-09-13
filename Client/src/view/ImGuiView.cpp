@@ -99,11 +99,7 @@ ImGuiView::ImGuiView()
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-	ImGui::StyleColorsLight();
-	ImGuiStyle& style = ImGui::GetStyle();
-	style.WindowRounding = 0.0f;
-	style.FrameRounding = 2.0f;
-	style.GrabRounding = 2.0f;
+	applyThemeForCurrentContext();
 
 	ImGui_ImplWin32_Init(hwnd);
 	ImGui_ImplDX11_Init(d3d_device.Get(), d3d_context.Get());
@@ -201,6 +197,7 @@ void ImGuiView::update_view_state(ConfigData conf)
 	state = conf;
 	syncBuffersFromState();
 	registerTrackingShortcut(state.tracking_shortcut_enabled);
+	applyCurrentTheme();
 	resizeHostWindowForMainContent(true);
 }
 
@@ -349,7 +346,7 @@ bool ImGuiView::createConfigWindow()
 
 	RECT main_rect = {};
 	GetWindowRect(hwnd, &main_rect);
-	RECT window_rect = { 0, 0, 411, 401 };
+	RECT window_rect = { 0, 0, 411, 424 };
 	AdjustWindowRect(&window_rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
 
 	config_hwnd = CreateWindowW(L"AITrackImGuiConfig", L"ConfigWindow",
@@ -372,11 +369,7 @@ bool ImGuiView::createConfigWindow()
 	config_context = ImGui::CreateContext();
 	ImGui::SetCurrentContext(config_context);
 	ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-	ImGui::StyleColorsLight();
-	ImGuiStyle& style = ImGui::GetStyle();
-	style.WindowRounding = 0.0f;
-	style.FrameRounding = 2.0f;
-	style.GrabRounding = 2.0f;
+	applyThemeForCurrentContext();
 	ImGui_ImplWin32_Init(config_hwnd);
 	ImGui_ImplDX11_Init(d3d_device.Get(), d3d_context.Get());
 	ImGui::SetCurrentContext(previous_context);
@@ -435,11 +428,7 @@ bool ImGuiView::createCalibrationWindow()
 	calibration_context = ImGui::CreateContext();
 	ImGui::SetCurrentContext(calibration_context);
 	ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-	ImGui::StyleColorsLight();
-	ImGuiStyle& style = ImGui::GetStyle();
-	style.WindowRounding = 0.0f;
-	style.FrameRounding = 2.0f;
-	style.GrabRounding = 2.0f;
+	applyThemeForCurrentContext();
 	ImGui_ImplWin32_Init(calibration_hwnd);
 	ImGui_ImplDX11_Init(d3d_device.Get(), d3d_context.Get());
 	ImGui::SetCurrentContext(previous_context);
@@ -694,10 +683,12 @@ void ImGuiView::renderConfigContent()
 		calibration_visible = true;
 	ImGui::EndChild();
 
-	ImGui::BeginChild("General", ImVec2(191, 71), true);
+	ImGui::BeginChild("General", ImVec2(191, 94), true);
 	ImGui::TextUnformatted("General");
 	ImGui::Checkbox("Autocheck updates", &state.autocheck_updates);
 	ImGui::Checkbox("Start/Stop Tracking shortcut", &state.tracking_shortcut_enabled);
+	if (ImGui::Checkbox("Dark mode", &state.dark_mode))
+		applyCurrentTheme();
 	ImGui::EndChild();
 	ImGui::EndGroup();
 
@@ -794,6 +785,42 @@ void ImGuiView::applyPrefs()
 		return;
 	syncStateFromBuffers();
 	presenter->save_prefs(state);
+}
+
+void ImGuiView::applyCurrentTheme()
+{
+	ImGuiContext* previous_context = ImGui::GetCurrentContext();
+
+	if (main_context)
+	{
+		ImGui::SetCurrentContext(main_context);
+		applyThemeForCurrentContext();
+	}
+	if (config_context)
+	{
+		ImGui::SetCurrentContext(config_context);
+		applyThemeForCurrentContext();
+	}
+	if (calibration_context)
+	{
+		ImGui::SetCurrentContext(calibration_context);
+		applyThemeForCurrentContext();
+	}
+
+	ImGui::SetCurrentContext(previous_context);
+}
+
+void ImGuiView::applyThemeForCurrentContext()
+{
+	if (state.dark_mode)
+		ImGui::StyleColorsDark();
+	else
+		ImGui::StyleColorsLight();
+
+	ImGuiStyle& style = ImGui::GetStyle();
+	style.WindowRounding = 0.0f;
+	style.FrameRounding = 2.0f;
+	style.GrabRounding = 2.0f;
 }
 
 void ImGuiView::registerTrackingShortcut(bool enabled)

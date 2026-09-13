@@ -65,6 +65,8 @@ private:
 	void syncBuffersFromState();
 	void syncStateFromBuffers();
 	void applyPrefs();
+	void applyCurrentTheme();
+	void applyThemeForCurrentContext();
 	void registerTrackingShortcut(bool enabled);
 
 	static LRESULT WINAPI wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);

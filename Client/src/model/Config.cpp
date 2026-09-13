@@ -41,6 +41,7 @@ ConfigData ConfigData::getGenericConfig()
 	conf.use_landmark_stab = true;
 	conf.autocheck_updates = true;
 	conf.tracking_shortcut_enabled = false;
+	conf.dark_mode = false;
 	conf.x = conf.y = conf.z = conf.pitch = conf.yaw = conf.roll = 0.0f;
 	conf.cam_exposure = -1;
 	conf.cam_gain = -1;
@@ -143,6 +144,7 @@ void ConfigMgr::updateConfig(const ConfigData& data)
 	values["cam_gain"] = std::to_string(data.cam_gain);
 	values["selected_camera"] = std::to_string(data.selected_camera);
 	values["autocheck_updates"] = boolToString(data.autocheck_updates);
+	values["dark_mode"] = boolToString(data.dark_mode);
 
 	values["set_env_threads"] = boolToString(data.onnx_set_env_threads);
 	values["env_threads"] = std::to_string(data.onnx_env_threads);
@@ -177,6 +179,7 @@ ConfigData ConfigMgr::getConfig()
 	c.cam_exposure= getInt("cam_exposure", -1);
 	c.cam_gain = getInt("cam_gain", -1);
 	c.autocheck_updates = getBool("autocheck_updates", true);
+	c.dark_mode = getBool("dark_mode", false);
 	c.onnx_set_env_threads = getBool("set_env_threads", true);
 	c.onnx_env_threads = getInt("env_threads", 1);
 	c.onnx_set_num_threads = getBool("set_num_threads", true);
