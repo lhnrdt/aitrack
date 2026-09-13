@@ -311,8 +311,8 @@ void PositionSolver::correct_rotation(FaceData& face_data)
     //float correction_pitch = (float)(distance / std::atan(verical_offset) * TO_DEG);
 
 
-    float correction_yaw = 90.0f - (float)std::atan2(distance, abs(lateral_offset)) * TO_DEG;
-    float correction_pitch = 90.0f - (float)std::atan2(distance, abs(verical_offset)) * TO_DEG;
+    float correction_yaw = static_cast<float>(90.0 - (std::atan2(distance, abs(lateral_offset)) * TO_DEG));
+    float correction_pitch = static_cast<float>(90.0 - (std::atan2(distance, abs(verical_offset)) * TO_DEG));
 
     if (lateral_offset < 0)
         correction_yaw *= -1;

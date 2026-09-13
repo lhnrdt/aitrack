@@ -53,13 +53,13 @@ std::unique_ptr<TrackerWrapper> TrackerFactory::buildTracker(
 		if (experimental_model) {
 			// This experimental uses less points and hence, a simple solver
 			std::unique_ptr<SimplePositionSolver> solver = std::make_unique<SimplePositionSolver>(
-				im_width, im_height, -2, -2, distance, complex_solver, fov, x_scale, y_scale, z_scale
+				im_width, im_height, -2.0f, -2.0f, distance, complex_solver, fov, x_scale, y_scale, z_scale
 				);
 			t = std::make_unique<EfficientTracker>( std::move(solver), detect_wstr, landmark_wstr);
 		}
 		else {		
 			std::unique_ptr<PositionSolver> solver = std::make_unique<PositionSolver>(
-				im_width, im_height, -2, -2, distance, complex_solver, fov, x_scale, y_scale, z_scale
+				im_width, im_height, -2.0f, -2.0f, distance, complex_solver, fov, x_scale, y_scale, z_scale
 			);
 			t = std::make_unique<StandardTracker>(std::move(solver), detect_wstr, landmark_wstr);
 		}

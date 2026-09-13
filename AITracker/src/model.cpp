@@ -6,6 +6,8 @@
 
 #include <math.h>
 #include <omp.h>
+#include <codecvt>
+#include <locale>
 
 
 float inline logit(float p)
@@ -49,7 +51,7 @@ StandardTracker::StandardTracker(std::unique_ptr<PositionSolver>&& solver, std::
     int topK = 7;
 
     face_detector = cv::FaceDetectorYN::create(
-        std::string(detection_model_path.begin(), detection_model_path.end()),
+        std::wstring_convert<std::codecvt_utf8<wchar_t>>().to_bytes(detection_model_path),
         "",                      
         cv::Size(114, 114),
         score_threshold,
@@ -100,7 +102,7 @@ void StandardTracker::calibrate(FaceData& face_data)
 TrackerMetadata StandardTracker::get_metadata()
 {
      TrackerMetadata  t;
-     t.head_width_scale = solver->get_x_scale();
+     t.head_width_scale = static_cast<float>(solver->get_x_scale());
      return t;
 }
 

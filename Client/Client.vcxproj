@@ -64,7 +64,7 @@
     <TargetName>AITrack Debug</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
-    <LinkIncremental>true</LinkIncremental>
+    <LinkIncremental>false</LinkIncremental>
     <TargetName>AITrack</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debugg|x64'">
@@ -79,6 +79,7 @@
     <Link>
       <AdditionalLibraryDirectories>$(Qt_LIBPATH_);$(SolutionDir)Dependencies\libusb\MS64\static;$(SolutionDir)Dependencies\OpenCV\lib;$(SolutionDir)Dependencies\spdlog\lib\;$(SolutionDir)Dependencies\onnxruntime\lib\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>$(Qt_LIBS_);opencv_world460.lib;onnxruntime.lib;Ws2_32.lib;libusb-1.0.lib;legacy_stdio_definitions.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/ignore:4286 %(AdditionalOptions)</AdditionalOptions>
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
     </Link>
