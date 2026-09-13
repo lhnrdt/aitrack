@@ -189,6 +189,7 @@ void Presenter::run_loop()
 	cv::Scalar color_magenta(255, 0, 255);
 
 	double buffer_data[6];
+	bool first_frame = true;
 
 	this->logger->info("Starting camera {} capture", state.selected_camera);
 
@@ -203,6 +204,14 @@ void Presenter::run_loop()
 			auto loop_start_time = std::chrono::steady_clock::now();
 			cam->get_frame(video_tex_pixels.get());
 			cv::Mat mat(cam->height, cam->width, CV_8UC3, video_tex_pixels.get());
+
+			if (paint && first_frame)
+			{
+				cv::Mat preview;
+				cv::cvtColor(mat, preview, cv::COLOR_BGR2RGB);
+				this->view->paint_video_frame(preview);
+				first_frame = false;
+			}
 
 			t->predict(mat, d, this->filter);
 
