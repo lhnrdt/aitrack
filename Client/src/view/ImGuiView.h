@@ -39,6 +39,7 @@ public:
 	void show_message(const char* msg, MSG_SEVERITY severity) override;
 	void set_shortcuts(bool enabled) override;
 	IView* get_calibration_window() override;
+	void show_frame_performance(const FramePerformanceData& data) override;
 	void paint_video_frame(cv::Mat& img) override;
 	void notify(IView* self) override;
 
@@ -65,6 +66,7 @@ private:
 	void renderConfigContent();
 	void renderCalibrationWindow();
 	void renderVideoPanel(ID3D11ShaderResourceView* texture, const char* empty_text);
+	void renderPerformanceChart();
 	void syncBuffersFromState();
 	void syncStateFromBuffers();
 	void applyPrefs();
@@ -105,8 +107,14 @@ private:
 	bool calibration_visible = false;
 	bool shortcut_enabled = false;
 	bool host_show_video_feed = false;
+	bool host_show_diagnostics = false;
 	std::atomic<float> diagnostic_fps{ 0.0f };
 	std::atomic<float> diagnostic_frame_time_ms{ 0.0f };
+	std::atomic<float> diagnostic_capture_ms{ 0.0f };
+	std::atomic<float> diagnostic_preprocess_ms{ 0.0f };
+	std::atomic<float> diagnostic_inference_ms{ 0.0f };
+	std::atomic<float> diagnostic_output_ms{ 0.0f };
+	std::atomic<float> diagnostic_wait_ms{ 0.0f };
 	std::atomic<bool> tracking_operation{ false };
 	std::atomic<bool> apply_operation{ false };
 	std::atomic<bool> calibration_operation{ false };

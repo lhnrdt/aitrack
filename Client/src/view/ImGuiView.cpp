@@ -19,6 +19,7 @@ namespace
 	constexpr UINT TRACKING_HOTKEY_ID = 1;
 	constexpr float MAIN_WINDOW_WIDTH = 420.0f;
 	constexpr float MAIN_WINDOW_HEIGHT_WITH_PREVIEW = 459.0f;
+	constexpr float MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS = 86.0f;
 	constexpr float MAIN_WINDOW_HEIGHT_COMPACT = 198.0f;
 	constexpr int MAIN_WINDOW_MARGIN = 8;
 
@@ -280,6 +281,15 @@ void ImGuiView::set_shortcuts(bool enabled)
 IView* ImGuiView::get_calibration_window()
 {
 	return this;
+}
+
+void ImGuiView::show_frame_performance(const FramePerformanceData& data)
+{
+	diagnostic_capture_ms.store(data.capture_ms, std::memory_order_relaxed);
+	diagnostic_preprocess_ms.store(data.preprocess_ms, std::memory_order_relaxed);
+	diagnostic_inference_ms.store(data.inference_ms, std::memory_order_relaxed);
+	diagnostic_output_ms.store(data.output_ms, std::memory_order_relaxed);
+	diagnostic_wait_ms.store(data.wait_ms, std::memory_order_relaxed);
 }
 
 void ImGuiView::paint_video_frame(cv::Mat& img)
@@ -598,12 +608,15 @@ void ImGuiView::resizeHostWindowForMainContent(bool force)
 	if (!hwnd)
 		return;
 
-	if (!force && host_show_video_feed == state.show_video_feed)
+	const bool show_diagnostics = state.show_video_feed && state.show_diagnostics;
+	if (!force && host_show_video_feed == state.show_video_feed && host_show_diagnostics == show_diagnostics)
 		return;
 
 	host_show_video_feed = state.show_video_feed;
+	host_show_diagnostics = show_diagnostics;
 	const int client_width = static_cast<int>(MAIN_WINDOW_WIDTH) + MAIN_WINDOW_MARGIN * 2;
-	const int client_height = static_cast<int>(state.show_video_feed ? MAIN_WINDOW_HEIGHT_WITH_PREVIEW : MAIN_WINDOW_HEIGHT_COMPACT) +
+	const int client_height = static_cast<int>(state.show_video_feed ? MAIN_WINDOW_HEIGHT_WITH_PREVIEW +
+		(show_diagnostics ? MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS : 0.0f) : MAIN_WINDOW_HEIGHT_COMPACT) +
 		MAIN_WINDOW_MARGIN * 2;
 
 	RECT window_rect = { 0, 0, client_width, client_height };
@@ -616,12 +629,18 @@ void ImGuiView::renderMainWindow()
 {
 	const bool tracking_busy = tracking_operation.load();
 	const bool waiting_for_camera_frame = tracking && state.show_video_feed && !video_texture_view;
+	const float main_window_height = state.show_video_feed ? MAIN_WINDOW_HEIGHT_WITH_PREVIEW +
+		(state.show_diagnostics ? MAIN_WINDOW_HEIGHT_WITH_DIAGNOSTICS : 0.0f) : MAIN_WINDOW_HEIGHT_COMPACT;
 	ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);
-	ImGui::SetNextWindowSize(ImVec2(MAIN_WINDOW_WIDTH, state.show_video_feed ? MAIN_WINDOW_HEIGHT_WITH_PREVIEW : MAIN_WINDOW_HEIGHT_COMPACT), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(ImVec2(MAIN_WINDOW_WIDTH, main_window_height), ImGuiCond_Always);
 	ImGui::Begin("AITrack " AITRACK_VERSION, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
 
 	if (state.show_video_feed)
+	{
 		renderVideoPanel(video_texture_view.Get(), tracking ? "Waiting for camera frame..." : "Tracking stopped");
+		if (state.show_diagnostics)
+			renderPerformanceChart();
+	}
 
 	ImGui::BeginDisabled(!enabled || tracking_busy);
 	const char* tracking_label = tracking_busy ? "Working..." :
@@ -641,7 +660,10 @@ void ImGuiView::renderMainWindow()
 	}
 	ImGui::SameLine();
 	if (ImGui::Checkbox("Enable diagnostics", &state.show_diagnostics))
+	{
+		resizeHostWindowForMainContent(true);
 		applyPrefs();
+	}
 
 	ImGui::BeginDisabled(tracking);
 	if (ImGui::Button("Configuration", ImVec2(-1, 30)))
@@ -888,6 +910,62 @@ void ImGuiView::renderVideoPanel(ID3D11ShaderResourceView* texture, const char* 
 		draw_list->AddText(ImVec2(panel_position.x + 12.0f, panel_position.y + 10.0f), IM_COL32(255, 255, 255, 255), diagnostics);
 	}
 	ImGui::EndChild();
+}
+
+void ImGuiView::renderPerformanceChart()
+{
+	const float values[] = {
+		diagnostic_capture_ms.load(std::memory_order_relaxed),
+		diagnostic_preprocess_ms.load(std::memory_order_relaxed),
+		diagnostic_inference_ms.load(std::memory_order_relaxed),
+		diagnostic_output_ms.load(std::memory_order_relaxed),
+		diagnostic_wait_ms.load(std::memory_order_relaxed)
+	};
+	const char* labels[] = { "Capture", "Preprocess", "Inference", "Output", "Wait" };
+	const ImU32 colors[] = {
+		IM_COL32(70, 130, 180, 255),
+		IM_COL32(218, 165, 32, 255),
+		IM_COL32(198, 92, 92, 255),
+		IM_COL32(93, 153, 85, 255),
+		IM_COL32(130, 130, 130, 255)
+	};
+	float total = 0.0f;
+	for (float value : values)
+		total += value;
+
+	ImGui::TextUnformatted("Frame phases");
+	ImGui::InvisibleButton("framePerformanceChart", ImVec2(-1.0f, 64.0f));
+	const ImVec2 chart_min = ImGui::GetItemRectMin();
+	const ImVec2 chart_max = ImGui::GetItemRectMax();
+	ImDrawList* draw_list = ImGui::GetWindowDrawList();
+	const float bar_top = chart_min.y + 2.0f;
+	const float bar_bottom = bar_top + 22.0f;
+	draw_list->AddRectFilled(ImVec2(chart_min.x, bar_top), ImVec2(chart_max.x, bar_bottom), IM_COL32(45, 45, 45, 255), 2.0f);
+
+	if (total > 0.0f)
+	{
+		float segment_start = chart_min.x;
+		for (int i = 0; i < 5; ++i)
+		{
+			const float segment_width = (chart_max.x - chart_min.x) * values[i] / total;
+			if (segment_width > 0.0f)
+			{
+				draw_list->AddRectFilled(ImVec2(segment_start, bar_top),
+					ImVec2(segment_start + segment_width, bar_bottom), colors[i]);
+				segment_start += segment_width;
+			}
+		}
+	}
+
+	for (int i = 0; i < 5; ++i)
+	{
+		const float legend_x = chart_min.x + (i % 3) * 136.0f;
+		const float legend_y = chart_min.y + 31.0f + (i / 3) * 16.0f;
+		char legend[48];
+		std::snprintf(legend, sizeof(legend), "%s %.1f ms", labels[i], values[i]);
+		draw_list->AddRectFilled(ImVec2(legend_x, legend_y + 2.0f), ImVec2(legend_x + 8.0f, legend_y + 10.0f), colors[i]);
+		draw_list->AddText(ImVec2(legend_x + 12.0f, legend_y), ImGui::GetColorU32(ImGuiCol_Text), legend);
+	}
 }
 
 void ImGuiView::renderSpinner(const char* label)

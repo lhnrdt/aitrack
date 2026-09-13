@@ -203,8 +203,10 @@ void Presenter::run_loop()
 		{
 			auto loop_start_time = std::chrono::steady_clock::now();
 			cam->get_frame(video_tex_pixels.get());
+			auto capture_end_time = std::chrono::steady_clock::now();
 			cv::Mat mat(cam->height, cam->width, CV_8UC3, video_tex_pixels.get());
 
+			auto preprocess_start_time = capture_end_time;
 			if (paint && first_frame)
 			{
 				cv::Mat preview;
@@ -212,9 +214,12 @@ void Presenter::run_loop()
 				this->view->paint_video_frame(preview);
 				first_frame = false;
 			}
+			auto inference_start_time = std::chrono::steady_clock::now();
 
 			t->predict(mat, d, this->filter);
+			auto inference_end_time = std::chrono::steady_clock::now();
 
+			auto output_start_time = inference_end_time;
 			if (d.face_detected)
 			{
 				if (paint)
@@ -231,13 +236,22 @@ void Presenter::run_loop()
 				cv::cvtColor(mat, mat, cv::COLOR_BGR2RGB);
 				this->view->paint_video_frame(mat);
 			}
+			auto output_end_time = std::chrono::steady_clock::now();
 
-			auto loop_end_time = std::chrono::steady_clock::now();
-			std::chrono::milliseconds loop_duration = std::chrono::duration_cast<std::chrono::milliseconds>(loop_end_time - loop_start_time);
-			if (loop_duration < frame_duration)
-				std::this_thread::sleep_for(frame_duration - loop_duration);
+			const auto loop_end_time = output_end_time;
+			const float loop_time_ms = std::chrono::duration<float, std::milli>(loop_end_time - loop_start_time).count();
+			const float wait_ms = loop_time_ms < frame_duration.count() ? frame_duration.count() - loop_time_ms : 0.0f;
+			this->view->show_frame_performance({
+				std::chrono::duration<float, std::milli>(capture_end_time - loop_start_time).count(),
+				std::chrono::duration<float, std::milli>(inference_start_time - preprocess_start_time).count(),
+				std::chrono::duration<float, std::milli>(inference_end_time - inference_start_time).count(),
+				std::chrono::duration<float, std::milli>(output_end_time - output_start_time).count(),
+				wait_ms
+			});
+			if (wait_ms > 0.0f)
+				std::this_thread::sleep_for(std::chrono::duration<float, std::milli>(wait_ms));
 //#ifdef _DEBUG
-			std::cout << "Iteration took: " << (int)(loop_duration.count()) << " ms" << std::endl;
+			std::cout << "Iteration took: " << (int)(std::chrono::duration<float, std::milli>(loop_end_time - loop_start_time).count()) << " ms" << std::endl;
 //#endif
 		}
 

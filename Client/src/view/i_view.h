@@ -7,6 +7,15 @@
 
 enum MSG_SEVERITY { CRITICAL, NORMAL };
 
+struct FramePerformanceData
+{
+	float capture_ms;
+	float preprocess_ms;
+	float inference_ms;
+	float output_ms;
+	float wait_ms;
+};
+
 
 
 
@@ -61,6 +70,7 @@ public:
 	/**/
 	virtual IView* get_calibration_window() = 0;
 
+	virtual void show_frame_performance(const FramePerformanceData& data) = 0;
 
 	virtual void paint_video_frame(cv::Mat& img) = 0;
 
