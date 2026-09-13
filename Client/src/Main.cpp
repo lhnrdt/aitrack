@@ -3,8 +3,7 @@
 #endif // !_DEBUG
 
 
-#include <QtWidgets/QApplication>
-#include "view/WindowMain.h"
+#include "view/ImGuiView.h"
 #include "presenter/presenter.h"
 #include "model/Config.h"
 #include <omp.h>
@@ -20,13 +19,6 @@
 
 int main(int argc, char *argv[])
 {
-
-#if defined(Q_OS_WIN)
-    QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
-#endif
-
-
-    
     std::shared_ptr<spdlog::logger> logger;
     try
     {
@@ -56,15 +48,12 @@ int main(int argc, char *argv[])
         omp_set_dynamic(state.onnx_dynamic);
     }
 
-    QApplication app(argc, argv);
-
-    WindowMain w;
-    w.show();
+    ImGuiView view;
 
     auto t_factory = std::make_unique<TrackerFactory>("./models/");
 
-    Presenter p((IView&)w, std::move(t_factory), std::move(conf_mgr));
+    Presenter p((IView&)view, std::move(t_factory), std::move(conf_mgr));
     logger->info("App initialized");
 
-    return app.exec();
+    return view.run();
 }

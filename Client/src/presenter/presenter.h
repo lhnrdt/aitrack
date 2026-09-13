@@ -16,6 +16,9 @@
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/basic_file_sink.h"
 
+#include <atomic>
+#include <thread>
+
 class Presenter : IPresenter, IUpdateSub
 {
 private:
@@ -36,7 +39,8 @@ private:
 	//IPaintableView* calibration_view;
 
 	// Whether the main recognition loop has to be running.
-	bool run = false;
+	std::atomic<bool> run = false;
+	std::thread tracking_thread;
 	// Whether the main recognition loop has to paint the recognized landmarks
 	bool paint = true;
 

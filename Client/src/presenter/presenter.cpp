@@ -9,8 +9,9 @@
 
 #include "../version.h"
 
-#include <QThread>
-#include <qapplication.h>
+#include <algorithm>
+#include <cctype>
+#include <thread>
 
 Presenter::Presenter(IView& view, std::unique_ptr<TrackerFactory>&& t_factory, std::unique_ptr<ConfigMgr>&& conf_mgr)
 {
@@ -113,7 +114,8 @@ void Presenter::init_sender(std::string &ip, int port)
 
 	std::string ip_str = ip;
 	int port_dest = port;
-	if (QString(ip_str.data()).simplified().replace(" ", "").size() < 2)
+	ip_str.erase(std::remove_if(ip_str.begin(), ip_str.end(), [](unsigned char ch) { return std::isspace(ch); }), ip_str.end());
+	if (ip_str.size() < 2)
 		ip_str = "127.0.0.1";
 
 	if (port_dest == 0)
@@ -221,12 +223,10 @@ void Presenter::run_loop()
 				this->view->paint_video_frame(mat);
 			}
 
-			QApplication::processEvents();
-
 			auto loop_end_time = std::chrono::steady_clock::now();
 			std::chrono::milliseconds loop_duration = std::chrono::duration_cast<std::chrono::milliseconds>(loop_end_time - loop_start_time);
 			if (loop_duration < frame_duration)
-				QThread::msleep((frame_duration - loop_duration).count());
+				std::this_thread::sleep_for(frame_duration - loop_duration);
 //#ifdef _DEBUG
 			std::cout << "Iteration took: " << (int)(loop_duration.count()) << " ms" << std::endl;
 //#endif
@@ -316,10 +316,17 @@ void Presenter::send_data(double* buffer_data)
 
 void Presenter::toggle_tracking()
 {
-	run = !run;
-	view->set_tracking_mode(run);
-	if (run)
-		run_loop();
+	bool should_start = !run.load();
+	run = should_start;
+	view->set_tracking_mode(should_start);
+	if (should_start)
+	{
+		tracking_thread = std::thread([this]() { run_loop(); });
+	}
+	else if (tracking_thread.joinable())
+	{
+		tracking_thread.join();
+	}
 }
 
 void Presenter::save_prefs(const ConfigData& data)
@@ -405,12 +412,10 @@ void Presenter::calibrate_face(IView& calibration_view)
 			cv::cvtColor(mat, mat, cv::COLOR_BGR2RGB);
 			calibration_view.paint_video_frame(mat);
 
-			QApplication::processEvents();
-
 			auto loop_end_time = std::chrono::steady_clock::now();
 			std::chrono::milliseconds loop_duration = std::chrono::duration_cast<std::chrono::milliseconds>(loop_end_time - loop_start_time);
 			if (loop_duration < frame_duration)
-				QThread::msleep((frame_duration - loop_duration).count());
+				std::this_thread::sleep_for(frame_duration - loop_duration);
 		}
 
 		cam->stop_camera();
@@ -438,6 +443,8 @@ void Presenter::close_program()
 {
 	//Assure we stop tracking loop.
 	run = false;
+	if (tracking_thread.joinable())
+		tracking_thread.join();
 	// Assure all cameras are released (some cameras have a "recording LED" which can be annoying to have on)
 	for(std::shared_ptr<Camera> cam : all_cameras)
 		cam->stop_camera();
