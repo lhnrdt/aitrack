@@ -984,9 +984,10 @@ void ImGuiView::renderVideoPanel(ID3D11ShaderResourceView* texture, const char* 
 		const float frame_time_ms = diagnostic_frame_time_ms.load(std::memory_order_relaxed);
 		ImDrawList* draw_list = ImGui::GetWindowDrawList();
 		draw_list->AddRectFilled(ImVec2(panel_position.x + 6.0f, panel_position.y + 6.0f),
-			ImVec2(panel_position.x + 132.0f, panel_position.y + 43.0f), IM_COL32(0, 0, 0, 170), 3.0f);
-		char diagnostics[64];
-		std::snprintf(diagnostics, sizeof(diagnostics), "FPS %.1f\nFrame %.1f ms", fps, frame_time_ms);
+			ImVec2(panel_position.x + 150.0f, panel_position.y + 58.0f), IM_COL32(0, 0, 0, 170), 3.0f);
+		char diagnostics[96];
+		std::snprintf(diagnostics, sizeof(diagnostics), "Target %.0f FPS\nPreview %.1f FPS\nFrame %.1f ms",
+			static_cast<float>(state.video_fps), fps, frame_time_ms);
 		draw_list->AddText(ImVec2(panel_position.x + 12.0f, panel_position.y + 10.0f), IM_COL32(255, 255, 255, 255), diagnostics);
 	}
 	ImGui::EndChild();
