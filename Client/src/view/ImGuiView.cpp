@@ -778,6 +778,8 @@ void ImGuiView::renderConfigContent()
 	inputIntRow("Height", &state.video_height);
 	inputIntRow("FPS", &state.video_fps);
 	ImGui::Separator();
+	ImGui::Checkbox("Face Auto-Exposure", &state.face_auto_exposure);
+	ImGui::BeginDisabled(state.face_auto_exposure);
 	bool custom_brightness = state.cam_gain > 0 && state.cam_exposure > 0;
 	if (ImGui::Checkbox("Custom brightness", &custom_brightness))
 	{
@@ -789,6 +791,7 @@ void ImGuiView::renderConfigContent()
 		ImGui::SliderInt("Gain", &state.cam_gain, 1, 64);
 		ImGui::SliderInt("Exposure", &state.cam_exposure, 0, 254);
 	}
+	ImGui::EndDisabled();
 	ImGui::EndChild();
 
 	ImGui::SameLine();

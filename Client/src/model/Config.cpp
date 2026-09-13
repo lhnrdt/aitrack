@@ -46,6 +46,7 @@ ConfigData ConfigData::getGenericConfig()
 	conf.x = conf.y = conf.z = conf.pitch = conf.yaw = conf.roll = 0.0f;
 	conf.cam_exposure = -1;
 	conf.cam_gain = -1;
+	conf.face_auto_exposure = false;
 	conf.onnx_set_env_threads = true;
 	conf.onnx_env_threads = 1;
 	conf.onnx_set_num_threads = true;
@@ -144,6 +145,7 @@ void ConfigMgr::updateConfig(const ConfigData& data)
 	values["fps"] = std::to_string(data.video_fps);
 	values["cam_exposure"] = std::to_string(data.cam_exposure);
 	values["cam_gain"] = std::to_string(data.cam_gain);
+	values["face_auto_exposure"] = boolToString(data.face_auto_exposure);
 	values["selected_camera"] = std::to_string(data.selected_camera);
 	values["autocheck_updates"] = boolToString(data.autocheck_updates);
 	values["dark_mode"] = boolToString(data.dark_mode);
@@ -181,6 +183,7 @@ ConfigData ConfigMgr::getConfig()
 	c.video_fps = getInt("fps", 30);
 	c.cam_exposure= getInt("cam_exposure", -1);
 	c.cam_gain = getInt("cam_gain", -1);
+	c.face_auto_exposure = getBool("face_auto_exposure", false);
 	c.autocheck_updates = getBool("autocheck_updates", true);
 	c.dark_mode = getBool("dark_mode", false);
 	c.onnx_set_env_threads = getBool("set_env_threads", true);

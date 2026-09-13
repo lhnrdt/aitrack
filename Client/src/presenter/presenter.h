@@ -34,6 +34,7 @@ private:
 
 	// Filter which will be aplied to the tracking.
 	std::unique_ptr<IFilter> filter;
+	double face_exposure_scale = 1.0;
 
 	IView* view;
 	//IPaintableView* calibration_view;
@@ -82,6 +83,7 @@ private:
 	* Updates presenter state with the current X,Y,Z,Yaw,Pitch,Roll recognized
 	*/
 	void update_tracking_data(FaceData& facedata);
+	void update_face_exposure(const cv::Mat& image, const FaceData& facedata);
 
 	/**
 	* Updates the stabilizer applied to the recognized facial landmarks.

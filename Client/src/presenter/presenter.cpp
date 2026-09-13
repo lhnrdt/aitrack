@@ -205,6 +205,12 @@ void Presenter::run_loop()
 			cam->get_frame(video_tex_pixels.get());
 			auto capture_end_time = std::chrono::steady_clock::now();
 			cv::Mat mat(cam->height, cam->width, CV_8UC3, video_tex_pixels.get());
+			if (state.face_auto_exposure && face_exposure_scale != 1.0)
+			{
+				cv::Mat adjusted;
+				mat.convertTo(adjusted, mat.type(), face_exposure_scale);
+				mat = adjusted;
+			}
 
 			auto preprocess_start_time = capture_end_time;
 			if (paint && first_frame)
@@ -218,6 +224,8 @@ void Presenter::run_loop()
 
 			t->predict(mat, d, this->filter);
 			auto inference_end_time = std::chrono::steady_clock::now();
+			if (state.face_auto_exposure && d.face_detected)
+				update_face_exposure(mat, d);
 
 			auto output_start_time = inference_end_time;
 			if (d.face_detected)
@@ -284,6 +292,30 @@ void Presenter::update_tracking_data(FaceData& facedata)
 	this->state.yaw = facedata.rotation[1];   // Yaw
 	this->state.pitch = facedata.rotation[0];   //Pitch
 	this->state.roll = facedata.rotation[2];   //Roll
+}
+
+void Presenter::update_face_exposure(const cv::Mat& image, const FaceData& facedata)
+{
+	if (image.empty() || !facedata.face_coords)
+		return;
+
+	auto clamp_coordinate = [](int value, int lower, int upper) {
+		return value < lower ? lower : (value > upper ? upper : value);
+	};
+	const int max_x = image.cols - 1;
+	const int max_y = image.rows - 1;
+	const int x0 = clamp_coordinate(facedata.face_coords[0], 0, max_x);
+	const int y0 = clamp_coordinate(facedata.face_coords[1], 0, max_y);
+	const int x1 = clamp_coordinate(facedata.face_coords[2], 0, max_x);
+	const int y1 = clamp_coordinate(facedata.face_coords[3], 0, max_y);
+	if (x1 <= x0 || y1 <= y0)
+		return;
+
+	const cv::Scalar mean = cv::mean(image(cv::Rect(x0, y0, x1 - x0, y1 - y0)));
+	const double face_luminance = mean[0] * 0.114 + mean[1] * 0.587 + mean[2] * 0.299;
+	const double desired_scale = 128.0 / (face_luminance > 1.0 ? face_luminance : 1.0);
+	const double limited_scale = desired_scale < 0.5 ? 0.5 : (desired_scale > 2.0 ? 2.0 : desired_scale);
+	face_exposure_scale = face_exposure_scale * 0.85 + limited_scale * 0.15;
 }
 
 void Presenter::update_stabilizer(const ConfigData& data)
@@ -376,6 +408,8 @@ void Presenter::save_prefs(const ConfigData& data)
 	state.selected_camera = data.selected_camera;
 	state.cam_exposure = data.cam_exposure;
 	state.cam_gain = data.cam_gain;
+	state.face_auto_exposure = data.face_auto_exposure;
+	face_exposure_scale = 1.0;
 	state.camera_fov = data.camera_fov;
 	state.video_fps = data.video_fps;
 	state.video_height = data.video_height;

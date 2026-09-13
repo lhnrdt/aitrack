@@ -32,6 +32,7 @@ struct ConfigData
 	int num_cameras_detected;
 	int cam_exposure;
 	int cam_gain;
+	bool face_auto_exposure;
 
 	bool onnx_set_env_threads;
 	int onnx_env_threads;
