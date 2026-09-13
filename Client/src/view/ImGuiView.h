@@ -51,7 +51,11 @@ private:
 	void destroyConfigWindow();
 	void destroyCalibrationWindow();
 	void uploadPendingFrame();
+	void uploadFrame(cv::Mat& frame, Microsoft::WRL::ComPtr<ID3D11Texture2D>& target_texture,
+		Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& target_texture_view,
+		int& target_texture_width, int& target_texture_height);
 	void releaseVideoTexture();
+	void releaseCalibrationTexture();
 	void resizeHostWindowForMainContent(bool force = false);
 	void renderMainWindow();
 	void renderConfigWindow();
@@ -91,9 +95,13 @@ private:
 
 	std::mutex frame_mutex;
 	cv::Mat pending_frame;
+	cv::Mat calibration_pending_frame;
 	bool frame_dirty = false;
+	bool calibration_frame_dirty = false;
 	int texture_width = 0;
 	int texture_height = 0;
+	int calibration_texture_width = 0;
+	int calibration_texture_height = 0;
 
 	Microsoft::WRL::ComPtr<ID3D11Device> d3d_device;
 	Microsoft::WRL::ComPtr<ID3D11DeviceContext> d3d_context;
@@ -105,4 +113,6 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> calibration_render_target_view;
 	Microsoft::WRL::ComPtr<ID3D11Texture2D> video_texture;
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> video_texture_view;
+	Microsoft::WRL::ComPtr<ID3D11Texture2D> calibration_texture;
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> calibration_texture_view;
 };

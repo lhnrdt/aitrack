@@ -115,6 +115,7 @@ ImGuiView::~ImGuiView()
 	destroyConfigWindow();
 	destroyCalibrationWindow();
 	ImGui::SetCurrentContext(main_context);
+	releaseCalibrationTexture();
 	releaseVideoTexture();
 	ImGui_ImplDX11_Shutdown();
 	ImGui_ImplWin32_Shutdown();
@@ -185,9 +186,6 @@ void ImGuiView::show_tracking_data(ConfigData conf)
 void ImGuiView::set_tracking_mode(bool is_tracking)
 {
 	tracking = is_tracking;
-	config_visible = config_visible && !tracking;
-	if (!config_visible && config_hwnd)
-		ShowWindow(config_hwnd, SW_HIDE);
 	if (!tracking)
 		releaseVideoTexture();
 }
@@ -213,6 +211,17 @@ void ImGuiView::set_enabled(bool enabled)
 
 void ImGuiView::set_visible(bool visible)
 {
+	if (calibration_visible || calibration_hwnd)
+	{
+		calibration_visible = visible;
+		if (!visible && calibration_hwnd)
+		{
+			ShowWindow(calibration_hwnd, SW_HIDE);
+			releaseCalibrationTexture();
+		}
+		return;
+	}
+
 	running = visible;
 }
 
@@ -236,10 +245,24 @@ void ImGuiView::paint_video_frame(cv::Mat& img)
 {
 	std::lock_guard<std::mutex> lock(frame_mutex);
 	if (img.channels() == 3)
-		cv::cvtColor(img, pending_frame, cv::COLOR_RGB2RGBA);
+	{
+		if (calibration_visible)
+			cv::cvtColor(img, calibration_pending_frame, cv::COLOR_RGB2RGBA);
+		else
+			cv::cvtColor(img, pending_frame, cv::COLOR_RGB2RGBA);
+	}
 	else
-		img.copyTo(pending_frame);
-	frame_dirty = true;
+	{
+		if (calibration_visible)
+			img.copyTo(calibration_pending_frame);
+		else
+			img.copyTo(pending_frame);
+	}
+
+	if (calibration_visible)
+		calibration_frame_dirty = true;
+	else
+		frame_dirty = true;
 }
 
 void ImGuiView::notify(IView* self)
@@ -333,7 +356,7 @@ bool ImGuiView::createConfigWindow()
 		WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
 		main_rect.right + 12, main_rect.top,
 		window_rect.right - window_rect.left, window_rect.bottom - window_rect.top,
-		nullptr, nullptr, GetModuleHandle(nullptr), this);
+		hwnd, nullptr, GetModuleHandle(nullptr), this);
 	if (!config_hwnd)
 		return false;
 
@@ -448,23 +471,41 @@ void ImGuiView::destroyCalibrationWindow()
 void ImGuiView::uploadPendingFrame()
 {
 	cv::Mat frame;
+	cv::Mat calibration_frame;
 	{
 		std::lock_guard<std::mutex> lock(frame_mutex);
-		if (!frame_dirty || pending_frame.empty())
-			return;
-		pending_frame.copyTo(frame);
-		frame_dirty = false;
+		if (frame_dirty && !pending_frame.empty())
+		{
+			pending_frame.copyTo(frame);
+			frame_dirty = false;
+		}
+		if (calibration_frame_dirty && !calibration_pending_frame.empty())
+		{
+			calibration_pending_frame.copyTo(calibration_frame);
+			calibration_frame_dirty = false;
+		}
 	}
 
-	if (frame.cols != texture_width || frame.rows != texture_height || !video_texture)
+	if (!frame.empty())
+		uploadFrame(frame, video_texture, video_texture_view, texture_width, texture_height);
+	if (!calibration_frame.empty())
+		uploadFrame(calibration_frame, calibration_texture, calibration_texture_view, calibration_texture_width, calibration_texture_height);
+}
+
+void ImGuiView::uploadFrame(cv::Mat& frame, Microsoft::WRL::ComPtr<ID3D11Texture2D>& target_texture,
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>& target_texture_view,
+	int& target_texture_width, int& target_texture_height)
+{
+	if (frame.cols != target_texture_width || frame.rows != target_texture_height || !target_texture)
 	{
-		releaseVideoTexture();
-		texture_width = frame.cols;
-		texture_height = frame.rows;
+		target_texture_view.Reset();
+		target_texture.Reset();
+		target_texture_width = frame.cols;
+		target_texture_height = frame.rows;
 
 		D3D11_TEXTURE2D_DESC desc = {};
-		desc.Width = texture_width;
-		desc.Height = texture_height;
+		desc.Width = target_texture_width;
+		desc.Height = target_texture_height;
 		desc.MipLevels = 1;
 		desc.ArraySize = 1;
 		desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -473,20 +514,20 @@ void ImGuiView::uploadPendingFrame()
 		desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 
-		d3d_device->CreateTexture2D(&desc, nullptr, &video_texture);
+		d3d_device->CreateTexture2D(&desc, nullptr, &target_texture);
 		D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
 		srv_desc.Format = desc.Format;
 		srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 		srv_desc.Texture2D.MipLevels = 1;
-		d3d_device->CreateShaderResourceView(video_texture.Get(), &srv_desc, &video_texture_view);
+		d3d_device->CreateShaderResourceView(target_texture.Get(), &srv_desc, &target_texture_view);
 	}
 
 	D3D11_MAPPED_SUBRESOURCE mapped = {};
-	if (SUCCEEDED(d3d_context->Map(video_texture.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+	if (SUCCEEDED(d3d_context->Map(target_texture.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
 	{
 		for (int y = 0; y < frame.rows; ++y)
 			memcpy(static_cast<unsigned char*>(mapped.pData) + mapped.RowPitch * y, frame.ptr(y), frame.cols * 4);
-		d3d_context->Unmap(video_texture.Get(), 0);
+		d3d_context->Unmap(target_texture.Get(), 0);
 	}
 }
 
@@ -496,6 +537,14 @@ void ImGuiView::releaseVideoTexture()
 	video_texture.Reset();
 	texture_width = 0;
 	texture_height = 0;
+}
+
+void ImGuiView::releaseCalibrationTexture()
+{
+	calibration_texture_view.Reset();
+	calibration_texture.Reset();
+	calibration_texture_width = 0;
+	calibration_texture_height = 0;
 }
 
 void ImGuiView::resizeHostWindowForMainContent(bool force)
@@ -686,7 +735,7 @@ void ImGuiView::renderCalibrationWindow()
 		ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
 		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
 
-	renderVideoPanel(video_texture_view.Get(), "Look directly at the camera, click \"Calibrate\" and wait a few seconds");
+	renderVideoPanel(calibration_texture_view.Get(), "Look directly at the camera, click \"Calibrate\" and wait a few seconds");
 	if (ImGui::Button("Calibrate", ImVec2(-1, 40)) && presenter)
 	{
 		applyPrefs();
@@ -882,7 +931,7 @@ LRESULT WINAPI ImGuiView::calibrationWndProc(HWND hwnd, UINT msg, WPARAM wparam,
 		{
 			view->calibration_visible = false;
 			ShowWindow(hwnd, SW_HIDE);
-			view->releaseVideoTexture();
+			view->releaseCalibrationTexture();
 		}
 		return 0;
 	case WM_DESTROY:
