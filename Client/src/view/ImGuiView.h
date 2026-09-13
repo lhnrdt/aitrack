@@ -44,6 +44,7 @@ private:
 	void cleanupRenderTarget();
 	void uploadPendingFrame();
 	void releaseVideoTexture();
+	void resizeHostWindowForMainContent(bool force = false);
 	void renderMainWindow();
 	void renderConfigWindow();
 	void renderCalibrationWindow();
@@ -63,6 +64,7 @@ private:
 	bool config_visible = false;
 	bool calibration_visible = false;
 	bool shortcut_enabled = false;
+	bool host_show_video_feed = false;
 
 	ConfigData state = ConfigData::getGenericConfig();
 	std::string message_text;

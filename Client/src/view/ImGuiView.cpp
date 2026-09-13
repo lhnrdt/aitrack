@@ -16,6 +16,10 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg
 namespace
 {
 	constexpr UINT TRACKING_HOTKEY_ID = 1;
+	constexpr float MAIN_WINDOW_WIDTH = 420.0f;
+	constexpr float MAIN_WINDOW_HEIGHT_WITH_PREVIEW = 459.0f;
+	constexpr float MAIN_WINDOW_HEIGHT_COMPACT = 174.0f;
+	constexpr int MAIN_WINDOW_MARGIN = 8;
 
 	std::wstring widen(const char* value)
 	{
@@ -62,9 +66,14 @@ ImGuiView::ImGuiView()
 	};
 	RegisterClassExW(&wc);
 
+	RECT window_rect = { 0, 0, static_cast<LONG>(MAIN_WINDOW_WIDTH) + MAIN_WINDOW_MARGIN * 2,
+		static_cast<LONG>(MAIN_WINDOW_HEIGHT_WITH_PREVIEW) + MAIN_WINDOW_MARGIN * 2 };
+	AdjustWindowRect(&window_rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
+
 	std::wstring title = widen("AITrack " AITRACK_VERSION);
 	hwnd = CreateWindowW(wc.lpszClassName, title.c_str(), WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-		100, 100, 436, 498, nullptr, nullptr, wc.hInstance, this);
+		100, 100, window_rect.right - window_rect.left, window_rect.bottom - window_rect.top, nullptr, nullptr, wc.hInstance, this);
+	host_show_video_feed = true;
 
 	if (!createDeviceD3D(hwnd))
 		throw std::runtime_error("Could not create Direct3D device");
@@ -182,6 +191,7 @@ void ImGuiView::update_view_state(ConfigData conf)
 	state = conf;
 	syncBuffersFromState();
 	registerTrackingShortcut(state.tracking_shortcut_enabled);
+	resizeHostWindowForMainContent(true);
 }
 
 void ImGuiView::set_enabled(bool enabled)
@@ -322,11 +332,30 @@ void ImGuiView::releaseVideoTexture()
 	texture_height = 0;
 }
 
+void ImGuiView::resizeHostWindowForMainContent(bool force)
+{
+	if (!hwnd)
+		return;
+
+	if (!force && host_show_video_feed == state.show_video_feed)
+		return;
+
+	host_show_video_feed = state.show_video_feed;
+	const int client_width = static_cast<int>(MAIN_WINDOW_WIDTH) + MAIN_WINDOW_MARGIN * 2;
+	const int client_height = static_cast<int>(state.show_video_feed ? MAIN_WINDOW_HEIGHT_WITH_PREVIEW : MAIN_WINDOW_HEIGHT_COMPACT) +
+		MAIN_WINDOW_MARGIN * 2;
+
+	RECT window_rect = { 0, 0, client_width, client_height };
+	AdjustWindowRect(&window_rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
+	SetWindowPos(hwnd, nullptr, 0, 0, window_rect.right - window_rect.left, window_rect.bottom - window_rect.top,
+		SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 void ImGuiView::renderMainWindow()
 {
 	ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);
-	ImGui::SetNextWindowSize(ImVec2(420, state.show_video_feed ? 459 : 174), ImGuiCond_Always);
-	ImGui::Begin("AITrack " AITRACK_VERSION, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+	ImGui::SetNextWindowSize(ImVec2(MAIN_WINDOW_WIDTH, state.show_video_feed ? MAIN_WINDOW_HEIGHT_WITH_PREVIEW : MAIN_WINDOW_HEIGHT_COMPACT), ImGuiCond_Always);
+	ImGui::Begin("AITrack " AITRACK_VERSION, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
 
 	if (state.show_video_feed)
 		renderVideoPanel(video_texture_view.Get(), tracking ? "Waiting for camera frame..." : "Tracking stopped");
@@ -337,7 +366,10 @@ void ImGuiView::renderMainWindow()
 	ImGui::EndDisabled();
 
 	if (ImGui::Checkbox("Enable preview", &state.show_video_feed))
+	{
+		resizeHostWindowForMainContent();
 		applyPrefs();
+	}
 
 	ImGui::BeginDisabled(tracking);
 	if (ImGui::Button("Configuration", ImVec2(-1, 30)))
