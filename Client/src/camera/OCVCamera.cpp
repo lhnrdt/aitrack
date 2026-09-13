@@ -462,11 +462,6 @@ CameraSettings OCVCamera::get_settings()
 	return CameraSettings();
 }
 
-void OCVCamera::set_manual_exposure(int exposure_value)
-{
-	setDirectShowCameraControls(cam_index, exposure_value, -1);
-}
-
 std::vector<int> OCVCamera::get_available_fps()
 {
 	std::vector<int> available;

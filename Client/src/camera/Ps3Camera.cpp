@@ -62,11 +62,6 @@ CameraSettings Ps3Camera::get_settings()
 	return CameraSettings(setting);
 }
 
-void Ps3Camera::set_manual_exposure(int exposure_value)
-{
-	ctx.eye->setExposure(min(max(exposure_value, 0), 254));
-}
-
 std::vector<int> Ps3Camera::get_available_fps()
 {
 	return { 30, 60 };
