@@ -74,6 +74,7 @@ private:
 	void startApplyOperation();
 	void startCalibrationOperation();
 	void renderSpinner(const char* label);
+	void renderSpinnerOnLastItem();
 	bool isUiThread() const;
 	void queueTrackingMode(bool is_tracking);
 	void queueViewState(ConfigData conf);

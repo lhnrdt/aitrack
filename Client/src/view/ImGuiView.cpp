@@ -602,6 +602,7 @@ void ImGuiView::resizeHostWindowForMainContent(bool force)
 void ImGuiView::renderMainWindow()
 {
 	const bool tracking_busy = tracking_operation.load();
+	const bool waiting_for_camera_frame = tracking && state.show_video_feed && !video_texture_view;
 	ImGui::SetNextWindowPos(ImVec2(8, 8), ImGuiCond_Once);
 	ImGui::SetNextWindowSize(ImVec2(MAIN_WINDOW_WIDTH, state.show_video_feed ? MAIN_WINDOW_HEIGHT_WITH_PREVIEW : MAIN_WINDOW_HEIGHT_COMPACT), ImGuiCond_Always);
 	ImGui::Begin("AITrack " AITRACK_VERSION, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
@@ -610,8 +611,12 @@ void ImGuiView::renderMainWindow()
 		renderVideoPanel(video_texture_view.Get(), tracking ? "Waiting for camera frame..." : "Tracking stopped");
 
 	ImGui::BeginDisabled(!enabled || tracking_busy);
-	if (ImGui::Button(tracking_busy ? "Working..." : (tracking ? "Stop tracking" : "Start tracking"), ImVec2(-1, 40)) && presenter)
+	const char* tracking_label = tracking_busy ? "Working..." :
+		(waiting_for_camera_frame ? "Waiting for camera frame..." : (tracking ? "Stop tracking" : "Start tracking"));
+	if (ImGui::Button(tracking_label, ImVec2(-1, 40)) && presenter)
 		startTrackingOperation();
+	if (waiting_for_camera_frame)
+		renderSpinnerOnLastItem();
 	ImGui::EndDisabled();
 	if (tracking_busy)
 		renderSpinner("Changing tracking state");
@@ -874,6 +879,22 @@ void ImGuiView::renderSpinner(const char* label)
 	ImGui::Dummy(ImVec2(radius * 2.0f + 8.0f, ImGui::GetTextLineHeight()));
 	ImGui::SameLine();
 	ImGui::TextUnformatted(label);
+}
+
+void ImGuiView::renderSpinnerOnLastItem()
+{
+	const ImVec2 min = ImGui::GetItemRectMin();
+	const ImVec2 max = ImGui::GetItemRectMax();
+	const ImVec2 center(min.x + 18.0f, (min.y + max.y) * 0.5f);
+	const float start = static_cast<float>(ImGui::GetTime()) * 5.0f;
+	ImDrawList* draw_list = ImGui::GetWindowDrawList();
+	for (int i = 0; i < 8; ++i)
+	{
+		const float angle = start + static_cast<float>(i) * 3.14159265f / 4.0f;
+		const float alpha = static_cast<float>(i + 1) / 8.0f;
+		const ImVec2 point(center.x + std::cos(angle) * 7.0f, center.y + std::sin(angle) * 7.0f);
+		draw_list->AddCircleFilled(point, 2.0f, ImGui::GetColorU32(ImGuiCol_ButtonActive, alpha));
+	}
 }
 
 void ImGuiView::syncBuffersFromState()
