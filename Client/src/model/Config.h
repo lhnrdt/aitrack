@@ -1,7 +1,8 @@
 #pragma once
 
 #include <string>
-#include <QSettings>
+#include <map>
+#include <vector>
 
 
 /**
@@ -55,5 +56,12 @@ public:
 	ConfigData getConfig();
 
 private:
-	QSettings conf;
+	std::string ini_path;
+	std::map<std::string, std::string> values;
+
+	void load();
+	std::string getValue(const std::string& key, const std::string& default_value) const;
+	int getInt(const std::string& key, int default_value) const;
+	double getDouble(const std::string& key, double default_value) const;
+	bool getBool(const std::string& key, bool default_value) const;
 };

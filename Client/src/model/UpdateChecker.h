@@ -1,8 +1,6 @@
 #pragma once
 
 #include <string>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
 
 
 class Version
@@ -63,23 +61,15 @@ public:
 
 
 
-class UpdateChecker : public QObject
+class UpdateChecker
 {
-Q_OBJECT
-
 private:
-	QNetworkRequest request;
-	QNetworkAccessManager manager;
 	IUpdateSub* observer;
 	Version current_version;
 
 public:
 	UpdateChecker(std::string &version, IUpdateSub *obs);
 	void get_latest_update(std::string &repo);
-	
-
-private slots:
-	void callback(QNetworkReply* reply);
 };
 
 
