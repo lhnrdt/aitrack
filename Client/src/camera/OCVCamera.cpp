@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <dshow.h>
+#include <algorithm>
 #include <vector>
 
 #pragma comment(lib, "strmiids.lib")
@@ -65,6 +66,102 @@ namespace
 		if (initialized_com)
 			CoUninitialize();
 		return name;
+	}
+
+	void releaseMediaType(AM_MEDIA_TYPE* media_type)
+	{
+		if (!media_type)
+			return;
+		if (media_type->cbFormat && media_type->pbFormat)
+			CoTaskMemFree(media_type->pbFormat);
+		if (media_type->pUnk)
+			media_type->pUnk->Release();
+		CoTaskMemFree(media_type);
+	}
+
+	std::vector<int> getDirectShowCameraFps(int camera_index, int width, int height)
+	{
+		std::vector<int> available;
+		const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		const bool initialized_com = SUCCEEDED(com_result);
+		ICreateDevEnum* device_enumerator = nullptr;
+		IEnumMoniker* enumerator = nullptr;
+		IMoniker* moniker = nullptr;
+		IBaseFilter* filter = nullptr;
+		IEnumPins* pins = nullptr;
+		IPin* pin = nullptr;
+
+		if (FAILED(CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER,
+			IID_ICreateDevEnum, reinterpret_cast<void**>(&device_enumerator))) ||
+			FAILED(device_enumerator->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &enumerator, 0)) ||
+			!enumerator)
+			goto cleanup;
+
+		for (int current_index = 0; current_index <= camera_index; ++current_index)
+		{
+			if (enumerator->Next(1, &moniker, nullptr) != S_OK)
+				goto cleanup;
+			if (current_index == camera_index)
+				break;
+			moniker->Release();
+			moniker = nullptr;
+		}
+
+		if (FAILED(moniker->BindToObject(nullptr, nullptr, IID_IBaseFilter, reinterpret_cast<void**>(&filter))) ||
+			FAILED(filter->EnumPins(&pins)))
+			goto cleanup;
+
+		while (pins->Next(1, &pin, nullptr) == S_OK)
+		{
+			PIN_INFO pin_info{};
+			if (SUCCEEDED(pin->QueryPinInfo(&pin_info)) && pin_info.dir == PINDIR_OUTPUT)
+			{
+				IAMStreamConfig* config = nullptr;
+				if (SUCCEEDED(pin->QueryInterface(IID_IAMStreamConfig, reinterpret_cast<void**>(&config))))
+				{
+					int capability_count = 0;
+					int capability_size = 0;
+					if (SUCCEEDED(config->GetNumberOfCapabilities(&capability_count, &capability_size)))
+					{
+						for (int i = 0; i < capability_count; ++i)
+						{
+							std::vector<BYTE> capability(static_cast<size_t>(capability_size));
+							AM_MEDIA_TYPE* media_type = nullptr;
+							if (SUCCEEDED(config->GetStreamCaps(i, &media_type, capability.data())) &&
+								media_type && media_type->formattype == FORMAT_VideoInfo &&
+								media_type->pbFormat)
+							{
+								const VIDEOINFOHEADER* video_info = reinterpret_cast<const VIDEOINFOHEADER*>(media_type->pbFormat);
+								if (video_info->bmiHeader.biWidth == width &&
+									std::abs(video_info->bmiHeader.biHeight) == height &&
+									video_info->AvgTimePerFrame > 0)
+								{
+									available.push_back(static_cast<int>((10000000LL + video_info->AvgTimePerFrame / 2) /
+										video_info->AvgTimePerFrame));
+								}
+							}
+							releaseMediaType(media_type);
+						}
+					}
+					config->Release();
+				}
+			}
+			if (pin_info.pFilter)
+				pin_info.pFilter->Release();
+			pin->Release();
+			pin = nullptr;
+		}
+
+	cleanup:
+		if (pins) pins->Release();
+		if (filter) filter->Release();
+		if (moniker) moniker->Release();
+		if (enumerator) enumerator->Release();
+		if (device_enumerator) device_enumerator->Release();
+		if (initialized_com) CoUninitialize();
+		std::sort(available.begin(), available.end());
+		available.erase(std::unique(available.begin(), available.end()), available.end());
+		return available;
 	}
 }
 
@@ -181,24 +278,7 @@ CameraSettings OCVCamera::get_settings()
 
 std::vector<int> OCVCamera::get_available_fps()
 {
-	std::vector<int> available;
-	cv::VideoCapture probe;
-	if (!probe.open(cam_index, CV_BACKEND))
-		return available;
-
-	probe.set(cv::CAP_PROP_FRAME_WIDTH, width);
-	probe.set(cv::CAP_PROP_FRAME_HEIGHT, height);
-	const int candidates[] = { 15, 24, 30, 60 };
-	for (const int candidate : candidates)
-	{
-		if (!probe.set(cv::CAP_PROP_FPS, candidate))
-			continue;
-		const double actual = probe.get(cv::CAP_PROP_FPS);
-		if (actual > 0.0 && std::fabs(actual - candidate) <= 1.0)
-			available.push_back(actual > 0.0 ? static_cast<int>(actual + 0.5) : candidate);
-	}
-	probe.release();
-	return available;
+	return getDirectShowCameraFps(cam_index, width, height);
 }
 
 std::string OCVCamera::get_name() const
