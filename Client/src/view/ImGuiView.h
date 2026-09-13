@@ -16,6 +16,8 @@
 #include <mutex>
 #include <string>
 
+struct ImGuiContext;
+
 class ImGuiView : public IRootView, public IView
 {
 public:
@@ -39,14 +41,19 @@ public:
 
 private:
 	bool createDeviceD3D(HWND hwnd);
+	bool createSwapChainForWindow(HWND target_hwnd, Microsoft::WRL::ComPtr<IDXGISwapChain>& target_swap_chain);
 	void cleanupDeviceD3D();
 	void createRenderTarget();
+	void createRenderTarget(IDXGISwapChain* target_swap_chain, Microsoft::WRL::ComPtr<ID3D11RenderTargetView>& target_render_target_view);
 	void cleanupRenderTarget();
+	bool createConfigWindow();
+	void destroyConfigWindow();
 	void uploadPendingFrame();
 	void releaseVideoTexture();
 	void resizeHostWindowForMainContent(bool force = false);
 	void renderMainWindow();
 	void renderConfigWindow();
+	void renderConfigContent();
 	void renderCalibrationWindow();
 	void renderVideoPanel(ID3D11ShaderResourceView* texture, const char* empty_text);
 	void syncBuffersFromState();
@@ -55,9 +62,13 @@ private:
 	void registerTrackingShortcut(bool enabled);
 
 	static LRESULT WINAPI wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+	static LRESULT WINAPI configWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
 	IPresenter* presenter = nullptr;
+	ImGuiContext* main_context = nullptr;
+	ImGuiContext* config_context = nullptr;
 	HWND hwnd = nullptr;
+	HWND config_hwnd = nullptr;
 	bool running = true;
 	bool enabled = true;
 	bool tracking = false;
@@ -85,7 +96,9 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11Device> d3d_device;
 	Microsoft::WRL::ComPtr<ID3D11DeviceContext> d3d_context;
 	Microsoft::WRL::ComPtr<IDXGISwapChain> swap_chain;
+	Microsoft::WRL::ComPtr<IDXGISwapChain> config_swap_chain;
 	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> render_target_view;
+	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> config_render_target_view;
 	Microsoft::WRL::ComPtr<ID3D11Texture2D> video_texture;
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> video_texture_view;
 };

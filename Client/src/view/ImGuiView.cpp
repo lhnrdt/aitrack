@@ -65,6 +65,12 @@ ImGuiView::ImGuiView()
 		L"AITrackImGui", nullptr
 	};
 	RegisterClassExW(&wc);
+	WNDCLASSEXW config_wc = {
+		sizeof(WNDCLASSEXW), CS_CLASSDC, ImGuiView::configWndProc, 0L, 0L,
+		GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr,
+		L"AITrackImGuiConfig", nullptr
+	};
+	RegisterClassExW(&config_wc);
 
 	RECT window_rect = { 0, 0, static_cast<LONG>(MAIN_WINDOW_WIDTH) + MAIN_WINDOW_MARGIN * 2,
 		static_cast<LONG>(MAIN_WINDOW_HEIGHT_WITH_PREVIEW) + MAIN_WINDOW_MARGIN * 2 };
@@ -82,7 +88,8 @@ ImGuiView::ImGuiView()
 	UpdateWindow(hwnd);
 
 	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
+	main_context = ImGui::CreateContext();
+	ImGui::SetCurrentContext(main_context);
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
@@ -99,13 +106,17 @@ ImGuiView::ImGuiView()
 ImGuiView::~ImGuiView()
 {
 	registerTrackingShortcut(false);
+	destroyConfigWindow();
+	ImGui::SetCurrentContext(main_context);
 	releaseVideoTexture();
 	ImGui_ImplDX11_Shutdown();
 	ImGui_ImplWin32_Shutdown();
-	ImGui::DestroyContext();
+	ImGui::DestroyContext(main_context);
+	main_context = nullptr;
 	cleanupDeviceD3D();
 	if (hwnd)
 		DestroyWindow(hwnd);
+	UnregisterClassW(L"AITrackImGuiConfig", GetModuleHandle(nullptr));
 	UnregisterClassW(L"AITrackImGui", GetModuleHandle(nullptr));
 }
 
@@ -124,6 +135,7 @@ int ImGuiView::run()
 		if (!running)
 			break;
 
+		ImGui::SetCurrentContext(main_context);
 		uploadPendingFrame();
 
 		ImGui_ImplDX11_NewFrame();
@@ -131,7 +143,6 @@ int ImGuiView::run()
 		ImGui::NewFrame();
 
 		renderMainWindow();
-		renderConfigWindow();
 		renderCalibrationWindow();
 
 		if (message_open)
@@ -150,6 +161,7 @@ int ImGuiView::run()
 		d3d_context->ClearRenderTargetView(render_target_view.Get(), clear_color);
 		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 		swap_chain->Present(1, 0);
+		renderConfigWindow();
 	}
 
 	if (presenter)
@@ -176,6 +188,8 @@ void ImGuiView::set_tracking_mode(bool is_tracking)
 {
 	tracking = is_tracking;
 	config_visible = config_visible && !tracking;
+	if (!config_visible && config_hwnd)
+		ShowWindow(config_hwnd, SW_HIDE);
 	if (!tracking)
 		releaseVideoTexture();
 }
@@ -259,9 +273,32 @@ bool ImGuiView::createDeviceD3D(HWND hwnd)
 	return true;
 }
 
+bool ImGuiView::createSwapChainForWindow(HWND target_hwnd, Microsoft::WRL::ComPtr<IDXGISwapChain>& target_swap_chain)
+{
+	DXGI_SWAP_CHAIN_DESC sd = {};
+	sd.BufferCount = 2;
+	sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	sd.OutputWindow = target_hwnd;
+	sd.SampleDesc.Count = 1;
+	sd.Windowed = TRUE;
+	sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+
+	Microsoft::WRL::ComPtr<IDXGIDevice> dxgi_device;
+	Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+	Microsoft::WRL::ComPtr<IDXGIFactory> factory;
+	if (FAILED(d3d_device.As(&dxgi_device)) ||
+		FAILED(dxgi_device->GetAdapter(&adapter)) ||
+		FAILED(adapter->GetParent(IID_PPV_ARGS(&factory))))
+		return false;
+
+	return SUCCEEDED(factory->CreateSwapChain(d3d_device.Get(), &sd, &target_swap_chain));
+}
+
 void ImGuiView::cleanupDeviceD3D()
 {
 	cleanupRenderTarget();
+	config_swap_chain.Reset();
 	swap_chain.Reset();
 	d3d_context.Reset();
 	d3d_device.Reset();
@@ -269,14 +306,82 @@ void ImGuiView::cleanupDeviceD3D()
 
 void ImGuiView::createRenderTarget()
 {
+	createRenderTarget(swap_chain.Get(), render_target_view);
+}
+
+void ImGuiView::createRenderTarget(IDXGISwapChain* target_swap_chain, Microsoft::WRL::ComPtr<ID3D11RenderTargetView>& target_render_target_view)
+{
 	Microsoft::WRL::ComPtr<ID3D11Texture2D> back_buffer;
-	swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
-	d3d_device->CreateRenderTargetView(back_buffer.Get(), nullptr, &render_target_view);
+	target_swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer));
+	d3d_device->CreateRenderTargetView(back_buffer.Get(), nullptr, &target_render_target_view);
 }
 
 void ImGuiView::cleanupRenderTarget()
 {
 	render_target_view.Reset();
+}
+
+bool ImGuiView::createConfigWindow()
+{
+	if (config_hwnd)
+		return true;
+
+	RECT main_rect = {};
+	GetWindowRect(hwnd, &main_rect);
+	RECT window_rect = { 0, 0, 411, 401 };
+	AdjustWindowRect(&window_rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
+
+	config_hwnd = CreateWindowW(L"AITrackImGuiConfig", L"ConfigWindow",
+		WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+		main_rect.right + 12, main_rect.top,
+		window_rect.right - window_rect.left, window_rect.bottom - window_rect.top,
+		nullptr, nullptr, GetModuleHandle(nullptr), this);
+	if (!config_hwnd)
+		return false;
+
+	if (!createSwapChainForWindow(config_hwnd, config_swap_chain))
+	{
+		DestroyWindow(config_hwnd);
+		config_hwnd = nullptr;
+		return false;
+	}
+	createRenderTarget(config_swap_chain.Get(), config_render_target_view);
+
+	ImGuiContext* previous_context = ImGui::GetCurrentContext();
+	config_context = ImGui::CreateContext();
+	ImGui::SetCurrentContext(config_context);
+	ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	ImGui::StyleColorsLight();
+	ImGuiStyle& style = ImGui::GetStyle();
+	style.WindowRounding = 0.0f;
+	style.FrameRounding = 2.0f;
+	style.GrabRounding = 2.0f;
+	ImGui_ImplWin32_Init(config_hwnd);
+	ImGui_ImplDX11_Init(d3d_device.Get(), d3d_context.Get());
+	ImGui::SetCurrentContext(previous_context);
+	return true;
+}
+
+void ImGuiView::destroyConfigWindow()
+{
+	if (config_context)
+	{
+		ImGuiContext* previous_context = ImGui::GetCurrentContext();
+		ImGui::SetCurrentContext(config_context);
+		ImGui_ImplDX11_Shutdown();
+		ImGui_ImplWin32_Shutdown();
+		ImGui::DestroyContext(config_context);
+		config_context = nullptr;
+		ImGui::SetCurrentContext(previous_context);
+	}
+
+	config_render_target_view.Reset();
+	config_swap_chain.Reset();
+	if (config_hwnd)
+	{
+		DestroyWindow(config_hwnd);
+		config_hwnd = nullptr;
+	}
 }
 
 void ImGuiView::uploadPendingFrame()
@@ -382,15 +487,46 @@ void ImGuiView::renderMainWindow()
 void ImGuiView::renderConfigWindow()
 {
 	if (!config_visible)
-		return;
-
-	ImGui::SetNextWindowSize(ImVec2(411, 401), ImGuiCond_Always);
-	if (!ImGui::Begin("ConfigWindow", &config_visible, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
 	{
-		ImGui::End();
+		if (config_hwnd)
+			ShowWindow(config_hwnd, SW_HIDE);
 		return;
 	}
 
+	if (!createConfigWindow())
+		return;
+
+	ShowWindow(config_hwnd, SW_SHOW);
+	UpdateWindow(config_hwnd);
+
+	ImGuiContext* previous_context = ImGui::GetCurrentContext();
+	ImGui::SetCurrentContext(config_context);
+
+	ImGui_ImplDX11_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	ImGuiIO& io = ImGui::GetIO();
+	ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
+	ImGui::Begin("ConfigWindowContent", nullptr,
+		ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
+	renderConfigContent();
+	ImGui::End();
+
+	ImGui::Render();
+	const float clear_color[4] = { 0.94f, 0.94f, 0.94f, 1.0f };
+	d3d_context->OMSetRenderTargets(1, config_render_target_view.GetAddressOf(), nullptr);
+	d3d_context->ClearRenderTargetView(config_render_target_view.Get(), clear_color);
+	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+	config_swap_chain->Present(1, 0);
+
+	ImGui::SetCurrentContext(previous_context);
+}
+
+void ImGuiView::renderConfigContent()
+{
 	ImGui::BeginDisabled(!enabled || tracking);
 	ImGui::BeginChild("Camera", ImVec2(191, 331), true);
 	ImGui::TextUnformatted("Camera");
@@ -458,7 +594,6 @@ void ImGuiView::renderConfigWindow()
 	if (ImGui::Button("Apply", ImVec2(-1, 31)))
 		applyPrefs();
 	ImGui::EndDisabled();
-	ImGui::End();
 }
 
 void ImGuiView::renderCalibrationWindow()
@@ -539,14 +674,22 @@ void ImGuiView::registerTrackingShortcut(bool enabled)
 
 LRESULT WINAPI ImGuiView::wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
-	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam))
-		return true;
-
 	ImGuiView* view = reinterpret_cast<ImGuiView*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 	if (msg == WM_NCCREATE)
 	{
 		CREATESTRUCT* create = reinterpret_cast<CREATESTRUCT*>(lparam);
+		view = reinterpret_cast<ImGuiView*>(create->lpCreateParams);
 		SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+	}
+
+	if (view && view->main_context)
+	{
+		ImGuiContext* previous_context = ImGui::GetCurrentContext();
+		ImGui::SetCurrentContext(view->main_context);
+		const LRESULT handled = ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam);
+		ImGui::SetCurrentContext(previous_context);
+		if (handled)
+			return true;
 	}
 
 	switch (msg)
@@ -567,6 +710,51 @@ LRESULT WINAPI ImGuiView::wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 		if (view)
 			view->running = false;
 		PostQuitMessage(0);
+		return 0;
+	}
+	return DefWindowProc(hwnd, msg, wparam, lparam);
+}
+
+LRESULT WINAPI ImGuiView::configWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+	ImGuiView* view = reinterpret_cast<ImGuiView*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+	if (msg == WM_NCCREATE)
+	{
+		CREATESTRUCT* create = reinterpret_cast<CREATESTRUCT*>(lparam);
+		view = reinterpret_cast<ImGuiView*>(create->lpCreateParams);
+		SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+	}
+
+	if (view && view->config_context)
+	{
+		ImGuiContext* previous_context = ImGui::GetCurrentContext();
+		ImGui::SetCurrentContext(view->config_context);
+		const LRESULT handled = ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam);
+		ImGui::SetCurrentContext(previous_context);
+		if (handled)
+			return true;
+	}
+
+	switch (msg)
+	{
+	case WM_SIZE:
+		if (view && view->d3d_device && view->config_swap_chain && wparam != SIZE_MINIMIZED)
+		{
+			view->config_render_target_view.Reset();
+			view->config_swap_chain->ResizeBuffers(0, LOWORD(lparam), HIWORD(lparam), DXGI_FORMAT_UNKNOWN, 0);
+			view->createRenderTarget(view->config_swap_chain.Get(), view->config_render_target_view);
+		}
+		return 0;
+	case WM_CLOSE:
+		if (view)
+		{
+			view->config_visible = false;
+			ShowWindow(hwnd, SW_HIDE);
+		}
+		return 0;
+	case WM_DESTROY:
+		if (view)
+			view->config_hwnd = nullptr;
 		return 0;
 	}
 	return DefWindowProc(hwnd, msg, wparam, lparam);
