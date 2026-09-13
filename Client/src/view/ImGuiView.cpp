@@ -967,14 +967,25 @@ void ImGuiView::updateMouseCursor()
 
 void ImGuiView::renderVideoPanel(ID3D11ShaderResourceView* texture, const char* empty_text)
 {
-	ImVec2 size(400, 280);
-	ImGui::BeginChild("cameraView", size, false, ImGuiWindowFlags_NoScrollbar);
+	const ImVec2 panel_size(400, 280);
+	ImGui::BeginChild("cameraView", panel_size, false, ImGuiWindowFlags_NoScrollbar);
 	const ImVec2 panel_position = ImGui::GetCursorScreenPos();
 	if (texture)
-		ImGui::Image(reinterpret_cast<ImTextureID>(texture), size);
+	{
+		ImVec2 image_size = panel_size;
+		const float image_aspect = static_cast<float>(texture_width) / static_cast<float>(texture_height);
+		const float panel_aspect = panel_size.x / panel_size.y;
+		if (image_aspect > panel_aspect)
+			image_size.y = panel_size.x / image_aspect;
+		else
+			image_size.x = panel_size.y * image_aspect;
+		ImGui::SetCursorPos(ImVec2((panel_size.x - image_size.x) * 0.5f,
+			(panel_size.y - image_size.y) * 0.5f));
+		ImGui::Image(reinterpret_cast<ImTextureID>(texture), image_size);
+	}
 	else
 	{
-		ImGui::SetCursorPosY((size.y - ImGui::GetTextLineHeightWithSpacing()) * 0.5f);
+		ImGui::SetCursorPosY((panel_size.y - ImGui::GetTextLineHeightWithSpacing()) * 0.5f);
 		ImGui::SetCursorPosX(12.0f);
 		ImGui::TextWrapped("%s", empty_text);
 	}
@@ -984,10 +995,10 @@ void ImGuiView::renderVideoPanel(ID3D11ShaderResourceView* texture, const char* 
 		const float frame_time_ms = diagnostic_frame_time_ms.load(std::memory_order_relaxed);
 		ImDrawList* draw_list = ImGui::GetWindowDrawList();
 		draw_list->AddRectFilled(ImVec2(panel_position.x + 6.0f, panel_position.y + 6.0f),
-			ImVec2(panel_position.x + 150.0f, panel_position.y + 58.0f), IM_COL32(0, 0, 0, 170), 3.0f);
-		char diagnostics[96];
-		std::snprintf(diagnostics, sizeof(diagnostics), "Target %.0f FPS\nPreview %.1f FPS\nFrame %.1f ms",
-			static_cast<float>(state.video_fps), fps, frame_time_ms);
+			ImVec2(panel_position.x + 180.0f, panel_position.y + 75.0f), IM_COL32(0, 0, 0, 170), 3.0f);
+		char diagnostics[128];
+		std::snprintf(diagnostics, sizeof(diagnostics), "Capture %dx%d\nTarget %.0f FPS\nPreview %.1f FPS\nFrame %.1f ms",
+			texture_width, texture_height, static_cast<float>(state.video_fps), fps, frame_time_ms);
 		draw_list->AddText(ImVec2(panel_position.x + 12.0f, panel_position.y + 10.0f), IM_COL32(255, 255, 255, 255), diagnostics);
 	}
 	ImGui::EndChild();
