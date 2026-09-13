@@ -23,5 +23,6 @@ public:
 	void get_frame(uint8_t* buffer);
 	void set_settings(CameraSettings& settings);
 	CameraSettings get_settings();
+	std::vector<int> get_available_fps() override;
 };
 

@@ -16,6 +16,7 @@ struct ConfigData
 	int video_height;
 	int video_width;
 	int video_fps;
+	std::vector<int> available_fps;
 	double prior_distance, camera_fov;
 	bool show_video_feed;
 	bool show_diagnostics;

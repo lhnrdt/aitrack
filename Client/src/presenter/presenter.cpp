@@ -80,6 +80,7 @@ Presenter::Presenter(IView& view, std::unique_ptr<TrackerFactory>&& t_factory, s
 
 		// Sync camera prefs between active camera and state.
 		update_camera_params();
+		update_available_fps();
 
 	}
 
@@ -357,6 +358,15 @@ void Presenter::update_camera_params()
 	this->logger->info("Updated camera parameters. {}x{}@{}", state.video_width, state.video_height, state.video_fps);
 }
 
+void Presenter::update_available_fps()
+{
+	state.available_fps = all_cameras[state.selected_camera]->get_available_fps();
+	if (std::find(state.available_fps.begin(), state.available_fps.end(), state.video_fps) == state.available_fps.end())
+		state.available_fps.push_back(state.video_fps);
+	std::sort(state.available_fps.begin(), state.available_fps.end());
+	state.available_fps.erase(std::unique(state.available_fps.begin(), state.available_fps.end()), state.available_fps.end());
+}
+
 void Presenter::send_data(double* buffer_data)
 {
 	//Send data
@@ -419,6 +429,7 @@ void Presenter::save_prefs(const ConfigData& data)
 	state.dark_mode = data.dark_mode;
 
 	update_camera_params();
+	update_available_fps();
 
 	// Notify UI to enable/disable shortcut signals
 	view->set_shortcuts(state.tracking_shortcut_enabled);

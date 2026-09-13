@@ -1,5 +1,7 @@
 #include "OCVCamera.h"
 
+#include <cmath>
+#include <vector>
 
 OCVCamera::OCVCamera(int width, int height, int fps, int index) :
 	Camera(width, height, fps),
@@ -106,4 +108,26 @@ void OCVCamera::set_settings(CameraSettings& settings)
 CameraSettings OCVCamera::get_settings()
 {
 	return CameraSettings();
+}
+
+std::vector<int> OCVCamera::get_available_fps()
+{
+	std::vector<int> available;
+	cv::VideoCapture probe;
+	if (!probe.open(cam_index, CV_BACKEND))
+		return available;
+
+	probe.set(cv::CAP_PROP_FRAME_WIDTH, width);
+	probe.set(cv::CAP_PROP_FRAME_HEIGHT, height);
+	const int candidates[] = { 15, 24, 30, 60, 90, 120 };
+	for (const int candidate : candidates)
+	{
+		if (!probe.set(cv::CAP_PROP_FPS, candidate))
+			continue;
+		const double actual = probe.get(cv::CAP_PROP_FPS);
+		if (actual <= 0.0 || std::fabs(actual - candidate) <= 1.0)
+			available.push_back(actual > 0.0 ? static_cast<int>(actual + 0.5) : candidate);
+	}
+	probe.release();
+	return available;
 }

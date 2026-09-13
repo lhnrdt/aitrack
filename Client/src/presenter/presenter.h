@@ -101,6 +101,7 @@ private:
 	* Updates the condifuration of the currently selected camera
 	*/
 	void update_camera_params();
+	void update_available_fps();
 
 	/**
 	* Paints the model predictions on an captured image using the FaceData.

@@ -61,3 +61,8 @@ CameraSettings Ps3Camera::get_settings()
 {
 	return CameraSettings(setting);
 }
+
+std::vector<int> Ps3Camera::get_available_fps()
+{
+	return { 30, 60 };
+}
