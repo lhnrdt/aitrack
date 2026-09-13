@@ -171,6 +171,86 @@ namespace
 		}), available.end());
 		return available;
 	}
+
+	bool setDirectShowCameraMode(int camera_index, int width, int height, int fps)
+	{
+		const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		const bool initialized_com = SUCCEEDED(com_result);
+		ICreateDevEnum* device_enumerator = nullptr;
+		IEnumMoniker* enumerator = nullptr;
+		IMoniker* moniker = nullptr;
+		IBaseFilter* filter = nullptr;
+		IEnumPins* pins = nullptr;
+		bool applied = false;
+
+		if (FAILED(CoCreateInstance(CLSID_SystemDeviceEnum, nullptr, CLSCTX_INPROC_SERVER,
+			IID_ICreateDevEnum, reinterpret_cast<void**>(&device_enumerator))) ||
+			FAILED(device_enumerator->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &enumerator, 0)) ||
+			!enumerator)
+			goto cleanup;
+
+		for (int current_index = 0; current_index <= camera_index; ++current_index)
+		{
+			if (enumerator->Next(1, &moniker, nullptr) != S_OK)
+				goto cleanup;
+			if (current_index == camera_index)
+				break;
+			moniker->Release();
+			moniker = nullptr;
+		}
+
+		if (FAILED(moniker->BindToObject(nullptr, nullptr, IID_IBaseFilter, reinterpret_cast<void**>(&filter))) ||
+			FAILED(filter->EnumPins(&pins)))
+			goto cleanup;
+
+		IPin* pin = nullptr;
+		while (!applied && pins->Next(1, &pin, nullptr) == S_OK)
+		{
+			PIN_INFO pin_info{};
+			if (SUCCEEDED(pin->QueryPinInfo(&pin_info)) && pin_info.dir == PINDIR_OUTPUT)
+			{
+				IAMStreamConfig* config = nullptr;
+				if (SUCCEEDED(pin->QueryInterface(IID_IAMStreamConfig, reinterpret_cast<void**>(&config))))
+				{
+					int capability_count = 0;
+					int capability_size = 0;
+					if (SUCCEEDED(config->GetNumberOfCapabilities(&capability_count, &capability_size)))
+					{
+						for (int i = 0; i < capability_count && !applied; ++i)
+						{
+							std::vector<BYTE> capability(static_cast<size_t>(capability_size));
+							AM_MEDIA_TYPE* media_type = nullptr;
+							if (SUCCEEDED(config->GetStreamCaps(i, &media_type, capability.data())) &&
+								media_type && media_type->formattype == FORMAT_VideoInfo && media_type->pbFormat)
+							{
+								VIDEOINFOHEADER* video_info = reinterpret_cast<VIDEOINFOHEADER*>(media_type->pbFormat);
+								const int mode_fps = static_cast<int>((10000000LL + video_info->AvgTimePerFrame / 2) /
+									video_info->AvgTimePerFrame);
+								if (video_info->bmiHeader.biWidth == width &&
+									std::abs(video_info->bmiHeader.biHeight) == height && mode_fps == fps)
+									applied = SUCCEEDED(config->SetFormat(media_type));
+							}
+							releaseMediaType(media_type);
+						}
+					}
+					config->Release();
+				}
+			}
+			if (pin_info.pFilter)
+				pin_info.pFilter->Release();
+			pin->Release();
+			pin = nullptr;
+		}
+
+	cleanup:
+		if (pins) pins->Release();
+		if (filter) filter->Release();
+		if (moniker) moniker->Release();
+		if (enumerator) enumerator->Release();
+		if (device_enumerator) device_enumerator->Release();
+		if (initialized_com) CoUninitialize();
+		return applied;
+	}
 }
 
 OCVCamera::OCVCamera(int width, int height, int fps, int index) :
@@ -234,6 +314,7 @@ bool OCVCamera::is_camera_available()
 
 void OCVCamera::start_camera()
 {
+	const bool exact_mode_applied = setDirectShowCameraMode(cam_index, width, height, fps);
 	cap.open(cam_index, CV_BACKEND);
 	if (!cap.isOpened())
 	{
@@ -243,12 +324,15 @@ void OCVCamera::start_camera()
 	// Force its properties each time we start the camera
 	// because if we force them with the device switched off
 	// bugs will occur (tiling, for example).
-	if (cap.get(cv::CAP_PROP_FRAME_WIDTH) != this->width)
-		cap.set(cv::CAP_PROP_FRAME_WIDTH, this->width);
-	if (cap.get(cv::CAP_PROP_FRAME_HEIGHT) != this->height)
-		cap.set(cv::CAP_PROP_FRAME_HEIGHT, this->height);
-	if (cap.get(cv::CAP_PROP_FPS) != this->fps)
-		cap.set(cv::CAP_PROP_FPS, this->fps);
+	if (!exact_mode_applied)
+	{
+		if (cap.get(cv::CAP_PROP_FRAME_WIDTH) != this->width)
+			cap.set(cv::CAP_PROP_FRAME_WIDTH, this->width);
+		if (cap.get(cv::CAP_PROP_FRAME_HEIGHT) != this->height)
+			cap.set(cv::CAP_PROP_FRAME_HEIGHT, this->height);
+		if (cap.get(cv::CAP_PROP_FPS) != this->fps)
+			cap.set(cv::CAP_PROP_FPS, this->fps);
+	}
 }
 
 void OCVCamera::stop_camera()
