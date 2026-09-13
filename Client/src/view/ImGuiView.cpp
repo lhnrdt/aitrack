@@ -346,7 +346,7 @@ bool ImGuiView::createConfigWindow()
 
 	RECT main_rect = {};
 	GetWindowRect(hwnd, &main_rect);
-	RECT window_rect = { 0, 0, 411, 424 };
+	RECT window_rect = { 0, 0, 411, 434 };
 	AdjustWindowRect(&window_rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
 
 	config_hwnd = CreateWindowW(L"AITrackImGuiConfig", L"ConfigWindow",
@@ -610,7 +610,7 @@ void ImGuiView::renderConfigWindow()
 	ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
 	ImGui::Begin("ConfigWindowContent", nullptr,
 		ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
+		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 	renderConfigContent();
 	ImGui::End();
 
@@ -627,7 +627,8 @@ void ImGuiView::renderConfigWindow()
 void ImGuiView::renderConfigContent()
 {
 	ImGui::BeginDisabled(!enabled || tracking);
-	ImGui::BeginChild("Camera", ImVec2(191, 331), true);
+	constexpr ImGuiWindowFlags fixed_panel_flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+	ImGui::BeginChild("Camera", ImVec2(191, 331), true, fixed_panel_flags);
 	ImGui::TextUnformatted("Camera");
 	if (ImGui::BeginCombo("##camera", (std::string("Camera ") + std::to_string(state.selected_camera)).c_str()))
 	{
@@ -658,13 +659,13 @@ void ImGuiView::renderConfigContent()
 
 	ImGui::SameLine();
 	ImGui::BeginGroup();
-	ImGui::BeginChild("Remote", ImVec2(191, 71), true);
+	ImGui::BeginChild("Remote", ImVec2(191, 71), true, fixed_panel_flags);
 	ImGui::TextUnformatted("Use remote OpenTrack client");
 	ImGui::InputText("IP", ip_buffer.data(), ip_buffer.size());
 	ImGui::InputText("Port", port_buffer.data(), port_buffer.size(), ImGuiInputTextFlags_CharsDecimal);
 	ImGui::EndChild();
 
-	ImGui::BeginChild("Tracker parameters", ImVec2(191, 181), true);
+	ImGui::BeginChild("Tracker parameters", ImVec2(191, 181), true, fixed_panel_flags);
 	ImGui::TextUnformatted("Tracker parameters");
 	ImGui::InputText("Distance (m)", distance_buffer.data(), distance_buffer.size(), ImGuiInputTextFlags_CharsDecimal);
 	ImGui::InputText("Camera FOV", fov_buffer.data(), fov_buffer.size(), ImGuiInputTextFlags_CharsDecimal);
@@ -683,7 +684,7 @@ void ImGuiView::renderConfigContent()
 		calibration_visible = true;
 	ImGui::EndChild();
 
-	ImGui::BeginChild("General", ImVec2(191, 94), true);
+	ImGui::BeginChild("General", ImVec2(191, 104), true, fixed_panel_flags);
 	ImGui::TextUnformatted("General");
 	ImGui::Checkbox("Autocheck updates", &state.autocheck_updates);
 	ImGui::Checkbox("Start/Stop Tracking shortcut", &state.tracking_shortcut_enabled);
