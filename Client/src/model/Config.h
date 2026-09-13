@@ -4,6 +4,8 @@
 #include <map>
 #include <vector>
 
+#include "../camera/Camera.h"
+
 
 /**
 * Struct which holds both the program state and the serializable part of this
@@ -17,6 +19,7 @@ struct ConfigData
 	int video_width;
 	int video_fps;
 	std::vector<int> available_fps;
+	std::vector<CameraVideoMode> available_video_modes;
 	std::vector<std::string> available_camera_names;
 	double prior_distance, camera_fov;
 	bool show_video_feed;

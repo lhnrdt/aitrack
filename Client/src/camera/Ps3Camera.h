@@ -49,6 +49,7 @@ public:
 	void set_settings(CameraSettings& settings);
 	CameraSettings get_settings();
 	std::vector<int> get_available_fps() override;
+	std::vector<CameraVideoMode> get_available_video_modes() override;
 	std::string get_name() const override;
 };
 

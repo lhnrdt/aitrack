@@ -79,9 +79,9 @@ namespace
 		CoTaskMemFree(media_type);
 	}
 
-	std::vector<int> getDirectShowCameraFps(int camera_index, int width, int height)
+	std::vector<CameraVideoMode> getDirectShowCameraModes(int camera_index)
 	{
-		std::vector<int> available;
+		std::vector<CameraVideoMode> available;
 		const HRESULT com_result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 		const bool initialized_com = SUCCEEDED(com_result);
 		ICreateDevEnum* device_enumerator = nullptr;
@@ -132,12 +132,14 @@ namespace
 								media_type->pbFormat)
 							{
 								const VIDEOINFOHEADER* video_info = reinterpret_cast<const VIDEOINFOHEADER*>(media_type->pbFormat);
-								if (video_info->bmiHeader.biWidth == width &&
-									std::abs(video_info->bmiHeader.biHeight) == height &&
-									video_info->AvgTimePerFrame > 0)
+								if (video_info->AvgTimePerFrame > 0)
 								{
-									available.push_back(static_cast<int>((10000000LL + video_info->AvgTimePerFrame / 2) /
-										video_info->AvgTimePerFrame));
+									available.push_back({
+										video_info->bmiHeader.biWidth,
+										std::abs(video_info->bmiHeader.biHeight),
+										static_cast<int>((10000000LL + video_info->AvgTimePerFrame / 2) /
+											video_info->AvgTimePerFrame)
+									});
 								}
 							}
 							releaseMediaType(media_type);
@@ -159,8 +161,14 @@ namespace
 		if (enumerator) enumerator->Release();
 		if (device_enumerator) device_enumerator->Release();
 		if (initialized_com) CoUninitialize();
-		std::sort(available.begin(), available.end());
-		available.erase(std::unique(available.begin(), available.end()), available.end());
+		std::sort(available.begin(), available.end(), [](const CameraVideoMode& left, const CameraVideoMode& right) {
+			if (left.width != right.width) return left.width < right.width;
+			if (left.height != right.height) return left.height < right.height;
+			return left.fps < right.fps;
+		});
+		available.erase(std::unique(available.begin(), available.end(), [](const CameraVideoMode& left, const CameraVideoMode& right) {
+			return left.width == right.width && left.height == right.height && left.fps == right.fps;
+		}), available.end());
 		return available;
 	}
 }
@@ -278,7 +286,16 @@ CameraSettings OCVCamera::get_settings()
 
 std::vector<int> OCVCamera::get_available_fps()
 {
-	return getDirectShowCameraFps(cam_index, width, height);
+	std::vector<int> available;
+	for (const CameraVideoMode& mode : getDirectShowCameraModes(cam_index))
+		if (mode.width == width && mode.height == height)
+			available.push_back(mode.fps);
+	return available;
+}
+
+std::vector<CameraVideoMode> OCVCamera::get_available_video_modes()
+{
+	return getDirectShowCameraModes(cam_index);
 }
 
 std::string OCVCamera::get_name() const

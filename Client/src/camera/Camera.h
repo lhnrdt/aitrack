@@ -5,6 +5,13 @@
 #include <vector>
 #include "CameraSettings.h"
 
+struct CameraVideoMode
+{
+	int width;
+	int height;
+	int fps;
+};
+
 class Camera
 {
 public:
@@ -17,6 +24,7 @@ public:
 	virtual void set_settings(CameraSettings& settings) = 0;
 	virtual CameraSettings get_settings() = 0;
 	virtual std::vector<int> get_available_fps() { return {}; }
+	virtual std::vector<CameraVideoMode> get_available_video_modes() { return {}; }
 	virtual std::string get_name() const { return "Camera"; }
 
 	Camera(int width, int height, int fps) {

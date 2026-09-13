@@ -777,27 +777,30 @@ void ImGuiView::renderConfigContent()
 			if (ImGui::Selectable(label.c_str(), state.selected_camera == i))
 			{
 				state.selected_camera = i;
-				state.available_fps.clear();
+				state.available_video_modes.clear();
 			}
 		}
 		ImGui::EndCombo();
 	}
-	inputIntRow("Width", &state.video_width);
-	inputIntRow("Height", &state.video_height);
 	{
-		std::vector<int> fps_options = state.available_fps;
-		if (fps_options.empty())
-			fps_options.push_back(state.video_fps);
-		ImGui::TextUnformatted("FPS");
+		const CameraVideoMode current_mode = { state.video_width, state.video_height, state.video_fps };
+		const std::string current_label = std::to_string(current_mode.width) + "x" +
+			std::to_string(current_mode.height) + " @ " + std::to_string(current_mode.fps) + " FPS";
+		ImGui::TextUnformatted("Video mode");
 		ImGui::SameLine(76.0f);
-		const std::string current_fps = std::to_string(state.video_fps);
-		if (ImGui::BeginCombo("##fps", current_fps.c_str()))
+		if (ImGui::BeginCombo("##videoMode", current_label.c_str()))
 		{
-			for (const int fps : fps_options)
+			for (const CameraVideoMode& mode : state.available_video_modes)
 			{
-				const std::string label = std::to_string(fps);
-				if (ImGui::Selectable(label.c_str(), state.video_fps == fps))
-					state.video_fps = fps;
+				const std::string label = std::to_string(mode.width) + "x" +
+					std::to_string(mode.height) + " @ " + std::to_string(mode.fps) + " FPS";
+				if (ImGui::Selectable(label.c_str(), mode.width == current_mode.width &&
+					mode.height == current_mode.height && mode.fps == current_mode.fps))
+				{
+					state.video_width = mode.width;
+					state.video_height = mode.height;
+					state.video_fps = mode.fps;
+				}
 			}
 			ImGui::EndCombo();
 		}

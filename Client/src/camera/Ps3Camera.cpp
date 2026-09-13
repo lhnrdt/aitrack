@@ -67,6 +67,11 @@ std::vector<int> Ps3Camera::get_available_fps()
 	return { 30, 60 };
 }
 
+std::vector<CameraVideoMode> Ps3Camera::get_available_video_modes()
+{
+	return { { 640, 480, 30 }, { 640, 480, 60 } };
+}
+
 std::string Ps3Camera::get_name() const
 {
 	return "PS3 Eye";
