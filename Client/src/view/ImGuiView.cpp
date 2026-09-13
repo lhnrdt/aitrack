@@ -71,6 +71,12 @@ ImGuiView::ImGuiView()
 		L"AITrackImGuiConfig", nullptr
 	};
 	RegisterClassExW(&config_wc);
+	WNDCLASSEXW calibration_wc = {
+		sizeof(WNDCLASSEXW), CS_CLASSDC, ImGuiView::calibrationWndProc, 0L, 0L,
+		GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr,
+		L"AITrackImGuiCalibration", nullptr
+	};
+	RegisterClassExW(&calibration_wc);
 
 	RECT window_rect = { 0, 0, static_cast<LONG>(MAIN_WINDOW_WIDTH) + MAIN_WINDOW_MARGIN * 2,
 		static_cast<LONG>(MAIN_WINDOW_HEIGHT_WITH_PREVIEW) + MAIN_WINDOW_MARGIN * 2 };
@@ -107,6 +113,7 @@ ImGuiView::~ImGuiView()
 {
 	registerTrackingShortcut(false);
 	destroyConfigWindow();
+	destroyCalibrationWindow();
 	ImGui::SetCurrentContext(main_context);
 	releaseVideoTexture();
 	ImGui_ImplDX11_Shutdown();
@@ -116,6 +123,7 @@ ImGuiView::~ImGuiView()
 	cleanupDeviceD3D();
 	if (hwnd)
 		DestroyWindow(hwnd);
+	UnregisterClassW(L"AITrackImGuiCalibration", GetModuleHandle(nullptr));
 	UnregisterClassW(L"AITrackImGuiConfig", GetModuleHandle(nullptr));
 	UnregisterClassW(L"AITrackImGui", GetModuleHandle(nullptr));
 }
@@ -143,17 +151,6 @@ int ImGuiView::run()
 		ImGui::NewFrame();
 
 		renderMainWindow();
-		renderCalibrationWindow();
-
-		if (message_open)
-			ImGui::OpenPopup(message_severity == CRITICAL ? "Warning" : "Information");
-		if (ImGui::BeginPopupModal(message_severity == CRITICAL ? "Warning" : "Information", &message_open, ImGuiWindowFlags_AlwaysAutoResize))
-		{
-			ImGui::TextWrapped("%s", message_text.c_str());
-			if (ImGui::Button("OK", ImVec2(120, 0)))
-				message_open = false;
-			ImGui::EndPopup();
-		}
 
 		ImGui::Render();
 		const float clear_color[4] = { 0.94f, 0.94f, 0.94f, 1.0f };
@@ -162,6 +159,7 @@ int ImGuiView::run()
 		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 		swap_chain->Present(1, 0);
 		renderConfigWindow();
+		renderCalibrationWindow();
 	}
 
 	if (presenter)
@@ -220,9 +218,8 @@ void ImGuiView::set_visible(bool visible)
 
 void ImGuiView::show_message(const char* msg, MSG_SEVERITY severity)
 {
-	message_text = msg;
-	message_severity = severity;
-	message_open = true;
+	MessageBoxA(hwnd, msg, severity == CRITICAL ? "Warning" : "Information",
+		MB_OK | (severity == CRITICAL ? MB_ICONWARNING : MB_ICONINFORMATION));
 }
 
 void ImGuiView::set_shortcuts(bool enabled)
@@ -299,6 +296,7 @@ void ImGuiView::cleanupDeviceD3D()
 {
 	cleanupRenderTarget();
 	config_swap_chain.Reset();
+	calibration_swap_chain.Reset();
 	swap_chain.Reset();
 	d3d_context.Reset();
 	d3d_device.Reset();
@@ -381,6 +379,69 @@ void ImGuiView::destroyConfigWindow()
 	{
 		DestroyWindow(config_hwnd);
 		config_hwnd = nullptr;
+	}
+}
+
+bool ImGuiView::createCalibrationWindow()
+{
+	if (calibration_hwnd)
+		return true;
+
+	RECT main_rect = {};
+	GetWindowRect(hwnd, &main_rect);
+	RECT window_rect = { 0, 0, 488, 406 };
+	AdjustWindowRect(&window_rect, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, FALSE);
+
+	calibration_hwnd = CreateWindowW(L"AITrackImGuiCalibration", L"Head Calibration",
+		WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+		main_rect.right + 12, main_rect.top + 36,
+		window_rect.right - window_rect.left, window_rect.bottom - window_rect.top,
+		nullptr, nullptr, GetModuleHandle(nullptr), this);
+	if (!calibration_hwnd)
+		return false;
+
+	if (!createSwapChainForWindow(calibration_hwnd, calibration_swap_chain))
+	{
+		DestroyWindow(calibration_hwnd);
+		calibration_hwnd = nullptr;
+		return false;
+	}
+	createRenderTarget(calibration_swap_chain.Get(), calibration_render_target_view);
+
+	ImGuiContext* previous_context = ImGui::GetCurrentContext();
+	calibration_context = ImGui::CreateContext();
+	ImGui::SetCurrentContext(calibration_context);
+	ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	ImGui::StyleColorsLight();
+	ImGuiStyle& style = ImGui::GetStyle();
+	style.WindowRounding = 0.0f;
+	style.FrameRounding = 2.0f;
+	style.GrabRounding = 2.0f;
+	ImGui_ImplWin32_Init(calibration_hwnd);
+	ImGui_ImplDX11_Init(d3d_device.Get(), d3d_context.Get());
+	ImGui::SetCurrentContext(previous_context);
+	return true;
+}
+
+void ImGuiView::destroyCalibrationWindow()
+{
+	if (calibration_context)
+	{
+		ImGuiContext* previous_context = ImGui::GetCurrentContext();
+		ImGui::SetCurrentContext(calibration_context);
+		ImGui_ImplDX11_Shutdown();
+		ImGui_ImplWin32_Shutdown();
+		ImGui::DestroyContext(calibration_context);
+		calibration_context = nullptr;
+		ImGui::SetCurrentContext(previous_context);
+	}
+
+	calibration_render_target_view.Reset();
+	calibration_swap_chain.Reset();
+	if (calibration_hwnd)
+	{
+		DestroyWindow(calibration_hwnd);
+		calibration_hwnd = nullptr;
 	}
 }
 
@@ -599,14 +660,31 @@ void ImGuiView::renderConfigContent()
 void ImGuiView::renderCalibrationWindow()
 {
 	if (!calibration_visible)
-		return;
-
-	ImGui::SetNextWindowSize(ImVec2(488, 406), ImGuiCond_Always);
-	if (!ImGui::Begin("Head Calibration", &calibration_visible, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse))
 	{
-		ImGui::End();
+		if (calibration_hwnd)
+			ShowWindow(calibration_hwnd, SW_HIDE);
 		return;
 	}
+
+	if (!createCalibrationWindow())
+		return;
+
+	ShowWindow(calibration_hwnd, SW_SHOW);
+	UpdateWindow(calibration_hwnd);
+
+	ImGuiContext* previous_context = ImGui::GetCurrentContext();
+	ImGui::SetCurrentContext(calibration_context);
+
+	ImGui_ImplDX11_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	ImGuiIO& io = ImGui::GetIO();
+	ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f), ImGuiCond_Always);
+	ImGui::SetNextWindowSize(io.DisplaySize, ImGuiCond_Always);
+	ImGui::Begin("HeadCalibrationContent", nullptr,
+		ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
 
 	renderVideoPanel(video_texture_view.Get(), "Look directly at the camera, click \"Calibrate\" and wait a few seconds");
 	if (ImGui::Button("Calibrate", ImVec2(-1, 40)) && presenter)
@@ -615,6 +693,15 @@ void ImGuiView::renderCalibrationWindow()
 		presenter->calibrate_face(*this);
 	}
 	ImGui::End();
+
+	ImGui::Render();
+	const float clear_color[4] = { 0.94f, 0.94f, 0.94f, 1.0f };
+	d3d_context->OMSetRenderTargets(1, calibration_render_target_view.GetAddressOf(), nullptr);
+	d3d_context->ClearRenderTargetView(calibration_render_target_view.Get(), clear_color);
+	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+	calibration_swap_chain->Present(1, 0);
+
+	ImGui::SetCurrentContext(previous_context);
 }
 
 void ImGuiView::renderVideoPanel(ID3D11ShaderResourceView* texture, const char* empty_text)
@@ -755,6 +842,52 @@ LRESULT WINAPI ImGuiView::configWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPAR
 	case WM_DESTROY:
 		if (view)
 			view->config_hwnd = nullptr;
+		return 0;
+	}
+	return DefWindowProc(hwnd, msg, wparam, lparam);
+}
+
+LRESULT WINAPI ImGuiView::calibrationWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+	ImGuiView* view = reinterpret_cast<ImGuiView*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+	if (msg == WM_NCCREATE)
+	{
+		CREATESTRUCT* create = reinterpret_cast<CREATESTRUCT*>(lparam);
+		view = reinterpret_cast<ImGuiView*>(create->lpCreateParams);
+		SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+	}
+
+	if (view && view->calibration_context)
+	{
+		ImGuiContext* previous_context = ImGui::GetCurrentContext();
+		ImGui::SetCurrentContext(view->calibration_context);
+		const LRESULT handled = ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam);
+		ImGui::SetCurrentContext(previous_context);
+		if (handled)
+			return true;
+	}
+
+	switch (msg)
+	{
+	case WM_SIZE:
+		if (view && view->d3d_device && view->calibration_swap_chain && wparam != SIZE_MINIMIZED)
+		{
+			view->calibration_render_target_view.Reset();
+			view->calibration_swap_chain->ResizeBuffers(0, LOWORD(lparam), HIWORD(lparam), DXGI_FORMAT_UNKNOWN, 0);
+			view->createRenderTarget(view->calibration_swap_chain.Get(), view->calibration_render_target_view);
+		}
+		return 0;
+	case WM_CLOSE:
+		if (view)
+		{
+			view->calibration_visible = false;
+			ShowWindow(hwnd, SW_HIDE);
+			view->releaseVideoTexture();
+		}
+		return 0;
+	case WM_DESTROY:
+		if (view)
+			view->calibration_hwnd = nullptr;
 		return 0;
 	}
 	return DefWindowProc(hwnd, msg, wparam, lparam);

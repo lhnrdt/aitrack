@@ -47,7 +47,9 @@ private:
 	void createRenderTarget(IDXGISwapChain* target_swap_chain, Microsoft::WRL::ComPtr<ID3D11RenderTargetView>& target_render_target_view);
 	void cleanupRenderTarget();
 	bool createConfigWindow();
+	bool createCalibrationWindow();
 	void destroyConfigWindow();
+	void destroyCalibrationWindow();
 	void uploadPendingFrame();
 	void releaseVideoTexture();
 	void resizeHostWindowForMainContent(bool force = false);
@@ -63,12 +65,15 @@ private:
 
 	static LRESULT WINAPI wndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 	static LRESULT WINAPI configWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+	static LRESULT WINAPI calibrationWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
 	IPresenter* presenter = nullptr;
 	ImGuiContext* main_context = nullptr;
 	ImGuiContext* config_context = nullptr;
+	ImGuiContext* calibration_context = nullptr;
 	HWND hwnd = nullptr;
 	HWND config_hwnd = nullptr;
+	HWND calibration_hwnd = nullptr;
 	bool running = true;
 	bool enabled = true;
 	bool tracking = false;
@@ -78,9 +83,6 @@ private:
 	bool host_show_video_feed = false;
 
 	ConfigData state = ConfigData::getGenericConfig();
-	std::string message_text;
-	MSG_SEVERITY message_severity = NORMAL;
-	bool message_open = false;
 
 	std::array<char, 64> ip_buffer{};
 	std::array<char, 16> port_buffer{};
@@ -97,8 +99,10 @@ private:
 	Microsoft::WRL::ComPtr<ID3D11DeviceContext> d3d_context;
 	Microsoft::WRL::ComPtr<IDXGISwapChain> swap_chain;
 	Microsoft::WRL::ComPtr<IDXGISwapChain> config_swap_chain;
+	Microsoft::WRL::ComPtr<IDXGISwapChain> calibration_swap_chain;
 	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> render_target_view;
 	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> config_render_target_view;
+	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> calibration_render_target_view;
 	Microsoft::WRL::ComPtr<ID3D11Texture2D> video_texture;
 	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> video_texture_view;
 };
