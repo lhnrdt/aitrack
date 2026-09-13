@@ -68,7 +68,7 @@ private:
 	void renderConfigWindow();
 	void renderConfigContent();
 	void renderCalibrationWindow();
-	void renderVideoPanel(ID3D11ShaderResourceView* texture, const char* empty_text);
+	void renderVideoPanel(ID3D11ShaderResourceView* texture, const char* empty_text, int image_width, int image_height);
 	void renderPerformanceChart();
 	void updateMouseCursor();
 	bool hasUnappliedSettings() const;

@@ -676,7 +676,7 @@ void ImGuiView::renderMainWindow()
 	if (state.show_video_feed)
 	{
 		renderVideoPanel(tracking ? video_texture_view.Get() : nullptr,
-		tracking ? "Waiting for camera frame..." : "Tracking stopped");
+		tracking ? "Waiting for camera frame..." : "Tracking stopped", texture_width, texture_height);
 		if (state.show_diagnostics)
 			renderPerformanceChart();
 	}
@@ -937,7 +937,8 @@ void ImGuiView::renderCalibrationWindow()
 		ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
 		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
 
-	renderVideoPanel(calibration_texture_view.Get(), "Look directly at the camera, click \"Calibrate\" and wait a few seconds");
+	renderVideoPanel(calibration_texture_view.Get(), "Look directly at the camera, click \"Calibrate\" and wait a few seconds",
+		calibration_texture_width, calibration_texture_height);
 	const bool calibration_busy = calibration_operation.load();
 	ImGui::BeginDisabled(calibration_busy || !enabled);
 	if (ImGui::Button(calibration_busy ? "Calibrating..." : "Calibrate", ImVec2(-1, 40)) && presenter)
@@ -965,7 +966,7 @@ void ImGuiView::updateMouseCursor()
 	SetCursor(LoadCursor(nullptr, ImGui::IsAnyItemHovered() ? IDC_HAND : IDC_ARROW));
 }
 
-void ImGuiView::renderVideoPanel(ID3D11ShaderResourceView* texture, const char* empty_text)
+void ImGuiView::renderVideoPanel(ID3D11ShaderResourceView* texture, const char* empty_text, int image_width, int image_height)
 {
 	const ImVec2 panel_size(400, 280);
 	ImGui::BeginChild("cameraView", panel_size, false, ImGuiWindowFlags_NoScrollbar);
@@ -973,8 +974,9 @@ void ImGuiView::renderVideoPanel(ID3D11ShaderResourceView* texture, const char* 
 	if (texture)
 	{
 		ImVec2 image_size = panel_size;
-		const float image_aspect = static_cast<float>(texture_width) / static_cast<float>(texture_height);
 		const float panel_aspect = panel_size.x / panel_size.y;
+		const float image_aspect = image_width > 0 && image_height > 0 ?
+			static_cast<float>(image_width) / static_cast<float>(image_height) : panel_aspect;
 		if (image_aspect > panel_aspect)
 			image_size.y = panel_size.x / image_aspect;
 		else
