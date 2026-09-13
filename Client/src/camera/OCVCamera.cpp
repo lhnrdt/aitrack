@@ -1,6 +1,7 @@
 #include "OCVCamera.h"
 
 #include <cmath>
+#include <cstring>
 #include <dshow.h>
 #include <algorithm>
 #include <vector>
@@ -343,10 +344,22 @@ void OCVCamera::stop_camera()
 void OCVCamera::get_frame(uint8_t* buffer)
 {
 	cv::Mat frame;
-	cap.read(frame);
+	if (!cap.read(frame) || frame.empty())
+	{
+		std::memset(buffer, 0, static_cast<size_t>(width) * height * 3);
+		return;
+	}
 	cv::flip(frame, frame, 1);
-	for (int i = 0; i < frame.cols * frame.rows * 3; i++)
-		buffer[i] = frame.data[i];
+	if (frame.channels() == 4)
+		cv::cvtColor(frame, frame, cv::COLOR_BGRA2BGR);
+	else if (frame.channels() == 1)
+		cv::cvtColor(frame, frame, cv::COLOR_GRAY2BGR);
+	if (frame.cols != width || frame.rows != height)
+		cv::resize(frame, frame, cv::Size(width, height), 0.0, 0.0, cv::INTER_LINEAR);
+
+	for (int row = 0; row < height; ++row)
+		std::memcpy(buffer + static_cast<size_t>(row) * width * 3,
+			frame.ptr(row), static_cast<size_t>(width) * 3);
 
 }
 
